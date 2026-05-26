@@ -210,7 +210,14 @@ textarea.form-control{resize:vertical;min-height:80px}
       </table></div>
     </div>
     <div class="page" id="page-forms">
-      <div class="page-header"><div><h2>Forms</h2><div class="ph-sub">Manage form panels created with /form-setup</div></div></div>
+      <div class="page-header">
+        <div><h2>Forms</h2><div class="ph-sub">Manage form panels — use /form-setup in Discord to create</div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:.78rem;color:var(--muted)">
+          <span style="background:var(--accent-dim);color:var(--accent);padding:3px 8px;border-radius:6px;font-weight:600">/form-setup modal</span>
+          <span style="background:rgba(61,220,132,.12);color:var(--green);padding:3px 8px;border-radius:6px;font-weight:600">/form-setup yesno</span>
+          <span style="background:rgba(247,201,90,.12);color:var(--yellow);padding:3px 8px;border-radius:6px;font-weight:600">/form-setup rolebutton</span>
+        </div>
+      </div>
       <div id="formsList"><div class="loading"><div class="spinner"></div> Loading…</div></div>
     </div>
     <div class="page" id="page-rolebuttons">
@@ -358,13 +365,95 @@ function loadPage(page){if(!currentGuild)return;switch(page){case'overview':load
   document.getElementById('topMembers').innerHTML=top.length?top.map(function(u,i){return'<div class="activity-item"><div class="activity-dot" style="background:var(--accent)"></div><div class="activity-text">'+(['🥇','🥈','🥉','4.','5.'][i])+' '+u.user_id+' — Lv '+u.level+' ('+u.xp+' XP)</div></div>';}).join(''):'<div class="empty-state"><i class="fa-solid fa-trophy"></i><p>No ranked members yet</p></div>';
 }catch(e){console.error(e);}}
 async function loadTickets(){var body=document.getElementById('ticketsBody');body.innerHTML='<tr><td colspan="5"><div class="loading"><div class="spinner"></div></div></td></tr>';try{var tickets=await apiGet('/api/guild/'+currentGuild+'/tickets');body.innerHTML=tickets.length?tickets.map(function(t){return'<tr><td>#'+t.id+'</td><td>'+(t.user_tag||t.user_id)+'</td><td><span class="badge badge-'+t.status+'">'+t.status+'</span></td><td>'+(t.channel_id?'<code>#'+t.channel_id+'</code>':'—')+'</td><td>'+(t.created_at?new Date(t.created_at).toLocaleDateString():'—')+'</td></tr>';}).join(''):'<tr><td colspan="5"><div class="empty-state"><i class="fa-solid fa-ticket"></i><p>No tickets</p></div></td></tr>';}catch(e){body.innerHTML='<tr><td colspan="5" style="color:var(--red)">Failed to load</td></tr>';}}
-async function loadForms(){var list=document.getElementById('formsList');list.innerHTML='<div class="loading"><div class="spinner"></div> Loading…</div>';try{var forms=await apiGet('/api/guild/'+currentGuild+'/forms');if(!forms.length){list.innerHTML='<div class="empty-state"><i class="fa-solid fa-wpforms"></i><p>No forms yet. Use <code>/form-setup create</code> to create one.</p></div>';return;}list.innerHTML=forms.map(function(f){return'<div class="form-list-item" id="form-item-'+f.id+'"><div class="fi-icon"><i class="fa-solid fa-wpforms"></i></div><div class="fi-info"><div class="fi-title">'+escHtml(f.title)+'</div><div class="fi-meta">Type: <b>'+(f.form_type||'modal')+'</b> &nbsp;·&nbsp; <span class="badge '+(f.active?'badge-on':'badge-off')+'">'+(f.active?'Active':'Disabled')+'</span></div></div><div class="fi-actions"><button class="btn btn-secondary btn-sm" onclick="viewFormDetail('+f.id+',\''+escHtml(f.title).replace(/'/g,"\\'")+'\')" ><i class="fa-solid fa-list"></i> Questions</button><button class="btn btn-secondary btn-sm" onclick="viewFormResponses('+f.id+',\''+escHtml(f.title).replace(/'/g,"\\'")+'\')"><i class="fa-solid fa-inbox"></i> Responses</button><button class="btn btn-sm '+(f.active?'btn-danger':'btn-success')+'" onclick="toggleForm('+f.id+','+(f.active?'false':'true')+')">'+(f.active?'Disable':'Enable')+'</button><button class="btn btn-danger btn-sm" onclick="deleteForm('+f.id+')"><i class="fa-solid fa-trash"></i></button></div></div>';}).join('');}catch(e){list.innerHTML='<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><p>Failed to load forms</p></div>';}}
+var MODE_LABEL={'modal':'Modal Form','yesno':'Yes / No','role':'Role Button','form':'Modal Form'};
+var MODE_ICON={'modal':'fa-wpforms','yesno':'fa-check-to-slot','role':'fa-hand-pointer','form':'fa-wpforms'};
+async function loadForms(){
+  var list=document.getElementById('formsList');
+  list.innerHTML='<div class="loading"><div class="spinner"></div> Loading…</div>';
+  try{
+    var forms=await apiGet('/api/guild/'+currentGuild+'/forms');
+    if(!forms.length){
+      list.innerHTML='<div class="empty-state"><i class="fa-solid fa-wpforms"></i><p>No forms yet.<br><code>/form-setup modal</code> — text questions<br><code>/form-setup yesno</code> — yes/no panel<br><code>/form-setup rolebutton</code> — instant role</p></div>';
+      return;
+    }
+    list.innerHTML=forms.map(function(f){
+      var mode=f.form_type||f.mode||'modal';
+      var modeLabel=MODE_LABEL[mode]||mode;
+      var modeIcon=MODE_ICON[mode]||'fa-wpforms';
+      var rolesHtml='';
+      if(f.roles&&f.roles.length){
+        var ys=f.roles.filter(function(r){return r.trigger==='yes'||r.trigger==='submit';});
+        var ns=f.roles.filter(function(r){return r.trigger==='no';});
+        if(mode==='yesno'){
+          if(ys.length) rolesHtml+=' · <span style="color:var(--green)">Yes roles: '+ys.length+'</span>';
+          if(ns.length) rolesHtml+=' · <span style="color:var(--red)">No roles: '+ns.length+'</span>';
+        } else {
+          rolesHtml+=' · Roles: '+f.roles.length;
+        }
+      }
+      var qCount=f.question_count||0;
+      var qHtml=mode!=='role'?' · '+qCount+' question'+(qCount!==1?'s':''):'';
+      return '<div class="form-list-item" id="form-item-'+f.id+'">'+
+        '<div class="fi-icon"><i class="fa-solid '+modeIcon+'"></i></div>'+
+        '<div class="fi-info">'+
+          '<div class="fi-title">'+escHtml(f.title)+'</div>'+
+          '<div class="fi-meta"><b>'+modeLabel+'</b>'+qHtml+rolesHtml+' · <span class="badge '+(f.active?'badge-on':'badge-off')+'">'+(f.active?'Active':'Disabled')+'</span></div>'+
+        '</div>'+
+        '<div class="fi-actions">'+
+          (mode!=='role'?'<button class="btn btn-secondary btn-sm" onclick="viewFormDetail('+f.id+',\''+escHtml(f.title).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')"><i class="fa-solid fa-list"></i> Questions</button>':'')+
+          '<button class="btn btn-secondary btn-sm" onclick="viewFormResponses('+f.id+',\''+escHtml(f.title).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')"><i class="fa-solid fa-inbox"></i> Responses</button>'+
+          '<button class="btn btn-sm '+(f.active?'btn-danger':'btn-success')+'" onclick="toggleForm('+f.id+','+(f.active?'false':'true')+')">'+(f.active?'Disable':'Enable')+'</button>'+
+          '<button class="btn btn-danger btn-sm" onclick="deleteForm('+f.id+')"><i class="fa-solid fa-trash"></i></button>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+  }catch(e){list.innerHTML='<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><p>Failed to load forms</p></div>';}
+}
 async function toggleForm(id,active){try{await apiPatch('/api/guild/'+currentGuild+'/forms/'+id,{active:active});toast(active?'Form enabled':'Form disabled');loadForms();}catch(e){toast('Failed to update form','error');}}
 async function deleteForm(id){if(!confirm('Delete this form?'))return;try{await apiDel('/api/guild/'+currentGuild+'/forms/'+id);toast('Form deleted');loadForms();}catch(e){toast('Failed to delete form','error');}}
 async function viewFormDetail(id,title){document.getElementById('modalFormTitle').textContent=title;document.getElementById('modalFormBody').innerHTML='<div class="loading"><div class="spinner"></div></div>';document.getElementById('modalFormDetail').style.display='flex';try{var qs=await apiGet('/api/guild/'+currentGuild+'/forms/'+id+'/questions');var html='<div style="margin-bottom:14px"><div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em;font-weight:700">Questions ('+qs.length+'/5)</div>'+(qs.length?qs.map(function(q,i){return'<div class="question-item"><div class="q-num">'+(i+1)+'</div><div class="q-text">'+escHtml(q.question)+'</div><button class="q-del" onclick="deleteQuestion('+id+','+q.id+',this)"><i class="fa-solid fa-trash"></i></button></div>';}).join(''):'<div class="empty-state" style="padding:20px"><i class="fa-solid fa-question"></i><p>No questions yet</p></div>')+'</div>'+(qs.length<5?'<div style="display:flex;gap:8px;margin-top:10px"><input type="text" class="form-control" id="newQuestionInput" placeholder="Enter question text…" maxlength="150" style="flex:1"><button class="btn btn-primary" onclick="addQuestion('+id+')"><i class="fa-solid fa-plus"></i> Add</button></div>':'<p style="font-size:.8rem;color:var(--muted)">Maximum 5 questions reached.</p>');document.getElementById('modalFormBody').innerHTML=html;}catch(e){document.getElementById('modalFormBody').innerHTML='<p style="color:var(--red)">Failed to load</p>';}}
 async function addQuestion(formId){var inp=document.getElementById('newQuestionInput');var q=inp.value.trim();if(!q){inp.focus();return;}try{await apiPost('/api/guild/'+currentGuild+'/forms/'+formId+'/questions',{question:q});toast('Question added');viewFormDetail(formId,document.getElementById('modalFormTitle').textContent);}catch(e){toast('Failed to add question','error');}}
 async function deleteQuestion(formId,qId,btn){btn.disabled=true;try{await apiDel('/api/guild/'+currentGuild+'/forms/'+formId+'/questions/'+qId);toast('Question removed');viewFormDetail(formId,document.getElementById('modalFormTitle').textContent);}catch(e){btn.disabled=false;toast('Failed to delete','error');}}
-async function viewFormResponses(id,title){document.getElementById('modalRespTitle').textContent=title+' — Responses';document.getElementById('modalRespBody').innerHTML='<div class="loading"><div class="spinner"></div></div>';document.getElementById('modalFormResponses').style.display='flex';try{var resps=await apiGet('/api/guild/'+currentGuild+'/forms/'+id+'/responses');document.getElementById('modalRespBody').innerHTML=resps.length?resps.map(function(r){var answers='';try{var arr=JSON.parse(r.answers||'[]');answers=arr.map(function(a){return'<div class="resp-answer">'+escHtml(a)+'</div>';}).join('');}catch(e){answers=r.answer?'<div class="resp-answer">'+escHtml(r.answer)+'</div>':'';}return'<div class="resp-item"><div class="resp-header"><div class="resp-user">'+escHtml(r.user_tag||r.user_id)+'</div><div class="resp-time">'+(r.created_at?new Date(r.created_at).toLocaleString():'')+'</div></div>'+answers+'</div>';}).join(''):'<div class="empty-state"><i class="fa-solid fa-inbox"></i><p>No responses yet</p></div>';}catch(e){document.getElementById('modalRespBody').innerHTML='<p style="color:var(--red)">Failed to load</p>';}}async function loadModeration(){try{var cfg=await apiGet('/api/guild/'+currentGuild+'/config').catch(function(){return{};});await loadChannels([document.getElementById('modLogChannel')],cfg.log_channel_id);await loadRoles([document.getElementById('modMutedRole')],cfg.muted_role_id);}catch(e){}}
+async function viewFormResponses(id,title){
+  document.getElementById('modalRespTitle').textContent=title+' — Responses';
+  document.getElementById('modalRespBody').innerHTML='<div class="loading"><div class="spinner"></div></div>';
+  document.getElementById('modalFormResponses').style.display='flex';
+  try{
+    var [resps,qs]=await Promise.all([
+      apiGet('/api/guild/'+currentGuild+'/forms/'+id+'/responses'),
+      apiGet('/api/guild/'+currentGuild+'/forms/'+id+'/questions').catch(function(){return[];})
+    ]);
+    if(!resps.length){document.getElementById('modalRespBody').innerHTML='<div class="empty-state"><i class="fa-solid fa-inbox"></i><p>No responses yet</p></div>';return;}
+    document.getElementById('modalRespBody').innerHTML=resps.map(function(r){
+      var typeTag='';
+      if(r.response_type==='yes') typeTag='<span class="badge badge-on" style="margin-left:8px">Yes</span>';
+      else if(r.response_type==='no') typeTag='<span class="badge badge-closed" style="margin-left:8px">No</span>';
+      var answersHtml='';
+      try{
+        var ans=typeof r.answers==='string'?JSON.parse(r.answers):r.answers;
+        if(ans&&typeof ans==='object'&&!Array.isArray(ans)){
+          // object form {q_<id>: value}
+          qs.forEach(function(q,i){
+            var val=ans['q_'+q.id]||ans['q'+q.id]||'';
+            if(val) answersHtml+='<div class="resp-answer"><b>'+escHtml(q.question)+'</b><br>'+escHtml(val)+'</div>';
+          });
+          if(!answersHtml){
+            Object.values(ans).forEach(function(v){if(v) answersHtml+='<div class="resp-answer">'+escHtml(String(v))+'</div>';});
+          }
+        } else if(Array.isArray(ans)){
+          ans.forEach(function(v){if(v) answersHtml+='<div class="resp-answer">'+escHtml(String(v))+'</div>';});
+        }
+      }catch(e){}
+      return '<div class="resp-item">'+
+        '<div class="resp-header">'+
+          '<div class="resp-user">'+escHtml(r.user_tag||r.user_id)+typeTag+'</div>'+
+          '<div class="resp-time">'+(r.created_at?new Date(r.created_at).toLocaleString():'')+'</div>'+
+        '</div>'+
+        (answersHtml||'<div class="resp-answer" style="color:var(--muted)">No text answers</div>')+
+      '</div>';
+    }).join('');
+  }catch(e){document.getElementById('modalRespBody').innerHTML='<p style="color:var(--red)">Failed to load</p>';}
+}async function loadModeration(){try{var cfg=await apiGet('/api/guild/'+currentGuild+'/config').catch(function(){return{};});await loadChannels([document.getElementById('modLogChannel')],cfg.log_channel_id);await loadRoles([document.getElementById('modMutedRole')],cfg.muted_role_id);}catch(e){}}
 document.getElementById('btnSaveMod').onclick=async function(){if(!currentGuild)return;try{await apiPost('/api/guild/'+currentGuild+'/config',{log_channel_id:document.getElementById('modLogChannel').value||null,muted_role_id:document.getElementById('modMutedRole').value||null});toast('Mod settings saved');}catch(e){toast('Failed to save','error');}};
 async function loadWelcome(){try{var cfg=await apiGet('/api/guild/'+currentGuild+'/config').catch(function(){return{};});document.getElementById('welcomeEnabled').checked=!!cfg.welcome_enabled;document.getElementById('welcomeMsg').value=cfg.welcome_message||'';await loadChannels([document.getElementById('welcomeChannel')],cfg.welcome_channel_id);await loadRoles([document.getElementById('welcomeRole')],cfg.auto_role_id);}catch(e){}}
 document.getElementById('btnSaveWelcome').onclick=async function(){if(!currentGuild)return;try{await apiPost('/api/guild/'+currentGuild+'/config',{welcome_enabled:document.getElementById('welcomeEnabled').checked?1:0,welcome_channel_id:document.getElementById('welcomeChannel').value||null,welcome_message:document.getElementById('welcomeMsg').value,auto_role_id:document.getElementById('welcomeRole').value||null});toast('Welcome settings saved');}catch(e){toast('Failed to save','error');}};

@@ -1,4 +1,4 @@
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+﻿require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 const fs = require('fs');
@@ -156,6 +156,13 @@ db.exec(`
     role_id    TEXT NOT NULL,
     expires_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS form_roles (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    form_id  INTEGER NOT NULL,
+    role_id  TEXT NOT NULL,
+    trigger  TEXT NOT NULL DEFAULT 'submit'
+  );
 `);
 
 // ── Migrations ────────────────────────────────────────────────────────────────
@@ -171,6 +178,8 @@ db.exec(`
   `ALTER TABLE guild_config ADD COLUMN goodbye_message TEXT DEFAULT 'Goodbye {user}, we will miss you!'`,
   `ALTER TABLE guild_config ADD COLUMN welcome_enabled INTEGER DEFAULT 0`,
   `ALTER TABLE guild_config ADD COLUMN goodbye_enabled INTEGER DEFAULT 0`,
+  `ALTER TABLE form_responses ADD COLUMN user_tag TEXT`,
+  `ALTER TABLE form_responses ADD COLUMN response_type TEXT DEFAULT 'submit'`,
 ].forEach(sql => { try { db.exec(sql); } catch {} });
 
 // ── Prepared statements ───────────────────────────────────────────────────────
@@ -237,8 +246,11 @@ const stmts = {
   addFormQuestion:       db.prepare('INSERT INTO form_questions (form_id, question, position) VALUES (?, ?, ?)'),
   getFormQuestions:      db.prepare('SELECT * FROM form_questions WHERE form_id = ? ORDER BY position ASC'),
   deleteFormQuestion:    db.prepare('DELETE FROM form_questions WHERE id = ?'),
-  saveFormResponse:      db.prepare('INSERT INTO form_responses (form_id, user_id, guild_id, answers) VALUES (?, ?, ?, ?)'),
+  saveFormResponse:      db.prepare('INSERT INTO form_responses (form_id, user_id, guild_id, answers, user_tag, response_type) VALUES (?, ?, ?, ?, ?, ?)'),
   getFormResponses:      db.prepare('SELECT * FROM form_responses WHERE form_id = ? ORDER BY created_at DESC LIMIT 100'),
+  addFormRole:           db.prepare('INSERT INTO form_roles (form_id, role_id, trigger) VALUES (?, ?, ?)'),
+  getFormRoles:          db.prepare('SELECT * FROM form_roles WHERE form_id = ?'),
+  deleteFormRolesByForm: db.prepare('DELETE FROM form_roles WHERE form_id = ?'),
 
   addTempRole:           db.prepare('INSERT INTO temp_roles (guild_id, user_id, role_id, expires_at) VALUES (?, ?, ?, ?)'),
   getExpiredTempRoles:   db.prepare("SELECT * FROM temp_roles WHERE expires_at <= datetime('now')"),
@@ -347,22 +359,42 @@ module.exports = {
 
   setXp,
 
-  createForm: (guildId, title, description, channelId, logChannelId, buttonLabel, mode, roleId, acceptMsg, declineMsg) => {
-    const r = stmts.createForm.run(guildId, title, description, channelId, logChannelId ?? null, buttonLabel, mode, roleId ?? null, acceptMsg, declineMsg);
+  createForm: (guildId, opts) => {
+    const r = stmts.createForm.run(
+      guildId,
+      opts.title, opts.description || '',
+      opts.channel_id, opts.log_channel_id || null,
+      opts.button_label || opts.title, opts.mode || opts.form_type || 'modal',
+      opts.role_id || null, opts.auto_response || opts.accept_message || '',
+      opts.no_response || opts.decline_message || '',
+    );
     return Number(r.lastInsertRowid);
   },
   getForm:           id => stmts.getForm.get(id),
   getForms:          guildId => stmts.getForms.all(guildId),
   setFormMessageId:  (id, msgId) => stmts.updateFormMsgId.run(msgId, id),
   setFormActive:     (id, active) => stmts.updateForm.run(active ? 1 : 0, id),
-  deleteForm:        id => { stmts.deleteFormResponses.run(id); stmts.deleteFormQuestions.run(id); stmts.deleteForm.run(id); },
+  deleteForm:        id => {
+    stmts.deleteFormRolesByForm.run(id);
+    stmts.deleteFormResponses.run(id);
+    stmts.deleteFormQuestions.run(id);
+    stmts.deleteForm.run(id);
+  },
 
-  addFormQuestion:   (formId, question, position) => stmts.addFormQuestion.run(formId, question, position),
-  getFormQuestions:  formId => stmts.getFormQuestions.all(formId),
-  deleteFormQuestion:id => stmts.deleteFormQuestion.run(id),
+  addFormQuestion:    (formId, question, position) => stmts.addFormQuestion.run(formId, question, position ?? 0),
+  getFormQuestions:   formId => stmts.getFormQuestions.all(formId),
+  deleteFormQuestion: id => stmts.deleteFormQuestion.run(id),
 
-  saveFormResponse:  (formId, userId, guildId, answers) => stmts.saveFormResponse.run(formId, userId, guildId, JSON.stringify(answers)),
-  getFormResponses:  formId => stmts.getFormResponses.all(formId).map(r => ({ ...r, answers: JSON.parse(r.answers) })),
+  addFormRole:    (formId, roleId, trigger) => stmts.addFormRole.run(formId, roleId, trigger || 'submit'),
+  getFormRoles:   formId => stmts.getFormRoles.all(formId),
+  deleteFormRoles:formId => stmts.deleteFormRolesByForm.run(formId),
+
+  saveFormResponse:  (formId, userId, guildId, answers, userTag, responseType) =>
+    stmts.saveFormResponse.run(formId, userId, guildId, JSON.stringify(answers), userTag || null, responseType || 'submit'),
+  getFormResponses:  formId => stmts.getFormResponses.all(formId).map(r => ({
+    ...r,
+    answers: (() => { try { return JSON.parse(r.answers); } catch { return []; } })(),
+  })),
 
   addTempRole:         (guildId, userId, roleId, expiresAt) => stmts.addTempRole.run(guildId, userId, roleId, expiresAt),
   getExpiredTempRoles: () => stmts.getExpiredTempRoles.all(),

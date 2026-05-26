@@ -1,4 +1,4 @@
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+﻿require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const express = require('express');
 const session = require('express-session');
 const axios   = require('axios');
@@ -275,7 +275,21 @@ app.delete('/api/guild/:guildId/slash-commands/:commandId', requireAuth, require
 // ── Forms ─────────────────────────────────────────────────────────────────────
 
 app.get('/api/guild/:guildId/forms', requireAuth, requireGuildAccess, (req, res) => {
-  res.json(db.getForms(req.params.guildId));
+  const forms = db.getForms(req.params.guildId).map(f => ({
+    ...f,
+    form_type: f.mode || 'modal',
+    question_count: db.getFormQuestions(f.id).length,
+    roles: db.getFormRoles(f.id),
+  }));
+  res.json(forms);
+});
+
+app.get('/api/guild/:guildId/forms/:formId/questions', requireAuth, requireGuildAccess, (req, res) => {
+  res.json(db.getFormQuestions(parseInt(req.params.formId)));
+});
+
+app.get('/api/guild/:guildId/forms/:formId/roles', requireAuth, requireGuildAccess, (req, res) => {
+  res.json(db.getFormRoles(parseInt(req.params.formId)));
 });
 
 app.post('/api/guild/:guildId/forms/:formId/questions', requireAuth, requireGuildAccess, (req, res) => {
