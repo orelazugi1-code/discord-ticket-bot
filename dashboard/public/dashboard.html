@@ -144,6 +144,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 .modal-close:hover{color:var(--text)}
 .modal-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
 @media(max-width:768px){.sidebar{display:none}.grid2{grid-template-columns:1fr}}
+.btn-add-bot{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:8px;cursor:pointer;color:var(--green);font-size:.83rem;font-weight:700;border:1px solid rgba(61,220,132,.25);background:rgba(61,220,132,.06);width:calc(100% - 16px);margin:4px 8px 8px;text-decoration:none;transition:background .15s,border-color .15s}.btn-add-bot:hover{background:rgba(61,220,132,.12);border-color:rgba(61,220,132,.45)}.btn-add-bot .ni{width:18px;text-align:center;font-size:.95rem;flex-shrink:0}
 </style>
 </head>
 <body><nav class="sidebar" id="sidebar">
@@ -171,6 +172,7 @@ textarea.form-control{resize:vertical;min-height:80px}
   <div class="nav-section">System</div>
   <button class="nav-item" data-page="settings"><i class="fa-solid fa-sliders ni"></i> Settings</button>
   <div class="sidebar-spacer"></div>
+<a href="/api/invite" target="_blank" rel="noopener" class="btn-add-bot"><span class="ni"><i class="fa-solid fa-plus"></i></span>Add Bot to Server</a>
   <div class="user-info" id="userInfo" style="display:none">
     <img id="userAvatar" src="" alt="">
     <div><div class="uname" id="userName"></div><div class="urole">Administrator</div></div>

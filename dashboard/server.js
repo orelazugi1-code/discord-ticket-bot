@@ -357,6 +357,17 @@ app.get('/api/guild/:guildId/roles', requireAuth, requireGuildAccess, async (req
   }
 });
 
+// ── Invite ────────────────────────────────────────────────────────────────────
+
+app.get('/api/invite', (req, res) => {
+  const params = new URLSearchParams({
+    client_id:   process.env.CLIENT_ID,
+    permissions: '1099780189206',
+    scope:       'bot applications.commands',
+  });
+  res.redirect(`https://discord.com/oauth2/authorize?${params}`);
+});
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => console.log(`✅ Dashboard → http://localhost:${PORT}`));

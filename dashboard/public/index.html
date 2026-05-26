@@ -89,6 +89,26 @@
   }
   .feature span { display: block; color: #dcddde; font-weight: 600; margin-bottom: 2px; }
 
+
+  .btn-invite {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: transparent;
+    color: #8e9297;
+    text-decoration: none;
+    padding: 12px 28px;
+    border-radius: 8px;
+    font-size: .95rem;
+    font-weight: 600;
+    border: 1px solid #2d3148;
+    transition: background .2s, color .2s, border-color .2s, transform .1s;
+    width: 100%;
+    justify-content: center;
+    margin-top: 10px;
+  }
+  .btn-invite:hover  { background: #252840; color: #dcddde; border-color: #5865f2; transform: translateY(-1px); }
+  .btn-invite:active { transform: translateY(0); }
   footer { margin-top: 28px; color: #4f545c; font-size: .8rem; }
 </style>
 </head>
@@ -106,6 +126,11 @@
     </svg>
     Login with Discord
   </a>
+
+  <a href="/api/invite" target="_blank" rel="noopener" class="btn-invite">
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Add Bot to Server
+  </a
 
   <div class="features">
     <div class="feature"><span>🎫 Tickets</span>Full ticket lifecycle management</div>
