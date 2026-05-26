@@ -184,6 +184,12 @@ db.exec(`
   `ALTER TABLE forms ADD COLUMN no_label  TEXT DEFAULT 'Reject'`,
   `ALTER TABLE form_responses ADD COLUMN approved       INTEGER`,
   `ALTER TABLE form_responses ADD COLUMN log_message_id TEXT`,
+  `ALTER TABLE guild_config ADD COLUMN muted_role_id TEXT`,
+  `ALTER TABLE guild_config ADD COLUMN auto_role_id TEXT`,
+  `ALTER TABLE guild_config ADD COLUMN admin_role_id TEXT`,
+  `ALTER TABLE guild_config ADD COLUMN prefix TEXT DEFAULT '!'`,
+  `ALTER TABLE guild_config ADD COLUMN xp_enabled INTEGER DEFAULT 1`,
+  `ALTER TABLE guild_config ADD COLUMN levelup_channel_id TEXT`,
 ].forEach(sql => { try { db.exec(sql); } catch {} });
 
 // ── Prepared statements ───────────────────────────────────────────────────────

@@ -94,7 +94,13 @@ app.get('/auth/logout', (req, res) => {
 // ── API ───────────────────────────────────────────────────────────────────────
 
 app.get('/api/me', requireAuth, (req, res) => {
-  res.json({ user: req.session.user, guilds: req.session.guilds });
+  res.json(req.session.user);
+});
+
+// ── Guilds ────────────────────────────────────────────────────────────────────
+
+app.get('/api/guilds', requireAuth, (req, res) => {
+  res.json(req.session.guilds || []);
 });
 
 app.get('/api/guild/:guildId/overview', requireAuth, requireGuildAccess, (req, res) => {
@@ -317,6 +323,38 @@ app.patch('/api/guild/:guildId/forms/:formId', requireAuth, requireGuildAccess, 
 app.delete('/api/guild/:guildId/forms/:formId', requireAuth, requireGuildAccess, (req, res) => {
   db.deleteForm(parseInt(req.params.formId));
   res.json({ success: true });
+});
+
+// ── Guild Info ───────────────────────────────────────────────────────────────
+
+app.get('/api/guild/:guildId/info', requireAuth, requireGuildAccess, async (req, res) => {
+  const { guildId } = req.params;
+  try {
+    const guildRes = await axios.get(`${DISCORD_API}/guilds/${guildId}?with_counts=true`, { headers: botHeaders() });
+    res.json({ memberCount: guildRes.data.approximate_member_count, name: guildRes.data.name });
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data?.message ?? err.message });
+  }
+});
+
+app.get('/api/guild/:guildId/channels', requireAuth, requireGuildAccess, async (req, res) => {
+  const { guildId } = req.params;
+  try {
+    const r = await axios.get(`${DISCORD_API}/guilds/${guildId}/channels`, { headers: botHeaders() });
+    res.json(r.data);
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data?.message ?? err.message });
+  }
+});
+
+app.get('/api/guild/:guildId/roles', requireAuth, requireGuildAccess, async (req, res) => {
+  const { guildId } = req.params;
+  try {
+    const r = await axios.get(`${DISCORD_API}/guilds/${guildId}/roles`, { headers: botHeaders() });
+    res.json(r.data);
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data?.message ?? err.message });
+  }
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
