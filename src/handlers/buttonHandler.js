@@ -56,7 +56,6 @@ async function handleButton(interaction, db) {
   }
 
   // ── Role toggle buttons ─────────────────────────────────────────────────────
-  // customId format: role:toggle:<panelId>:<roleId>
   if (ns === 'role' && parts[1] === 'toggle') {
     const roleId = parts[3];
     if (!roleId) return;
@@ -84,6 +83,99 @@ async function handleButton(interaction, db) {
     }
     return;
   }
+
+  // ── Form buttons ────────────────────────────────────────────────────────────
+  // customId: form:open:<formId> | form:yes:<formId> | form:no:<formId>
+  if (ns === 'form') {
+    const action = parts[1];
+    const formId = parseInt(parts[2]);
+    const form   = db.getForm(formId);
+
+    if (!form || !form.active) {
+      return interaction.reply({ content: '❌ This form is no longer active.', ephemeral: true });
+    }
+
+    if (action === 'open') {
+      const questions = db.getFormQuestions(formId);
+      if (questions.length === 0) {
+        if (form.role_id) {
+          // role-only mode with no questions — just assign role
+          await interaction.deferReply({ ephemeral: true });
+          await handleFormResult(interaction, form, { _mode: 'role' }, db);
+          return;
+        }
+        return interaction.reply({ content: '❌ This form has no questions configured yet.', ephemeral: true });
+      }
+
+      const modal = new ModalBuilder()
+        .setCustomId(`form_submit:${formId}`)
+        .setTitle(form.title.substring(0, 45));
+
+      for (const q of questions.slice(0, 5)) {
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId(`q${q.id}`)
+              .setLabel(q.question.substring(0, 45))
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true),
+          ),
+        );
+      }
+      return interaction.showModal(modal);
+    }
+
+    if (action === 'yes' || action === 'no') {
+      await interaction.deferReply({ ephemeral: true });
+      await handleFormResult(interaction, form, { answer: action }, db);
+    }
+    return;
+  }
+}
+
+async function handleFormResult(interaction, form, answers, db) {
+  const { user, guild } = interaction;
+
+  // Log to log channel
+  if (form.log_channel_id) {
+    const logCh = guild.channels.cache.get(form.log_channel_id);
+    if (logCh) {
+      const { EmbedBuilder } = require('discord.js');
+      const embed = new EmbedBuilder()
+        .setTitle(`📋 Form Response: ${form.title}`)
+        .setColor(0x5865f2)
+        .addFields({ name: 'User', value: `<@${user.id}> (${user.tag})`, inline: true })
+        .setTimestamp();
+
+      if (answers.answer) {
+        embed.addFields({ name: 'Answer', value: answers.answer === 'yes' ? '✅ Yes' : '❌ No', inline: true });
+      } else {
+        for (const [key, val] of Object.entries(answers)) {
+          embed.addFields({ name: key, value: String(val).substring(0, 1024) });
+        }
+      }
+      await logCh.send({ embeds: [embed] }).catch(() => {});
+    }
+  }
+
+  // Save to DB
+  db.saveFormResponse(form.id, user.id, guild.id, answers);
+
+  // Assign role
+  if (form.role_id) {
+    const isYes = !answers.answer || answers.answer === 'yes' || answers._mode === 'role';
+    if (isYes) {
+      await interaction.member.roles.add(form.role_id).catch(() => {});
+    }
+  }
+
+  // Reply to user
+  let replyMsg = '✅ Your response has been submitted!';
+  if (answers.answer === 'yes' && form.accept_message) replyMsg = form.accept_message;
+  else if (answers.answer === 'no' && form.decline_message) replyMsg = form.decline_message;
+  else if (form.accept_message && !answers.answer) replyMsg = form.accept_message;
+
+  await interaction.editReply({ content: replyMsg });
 }
 
 module.exports = { handleButton };

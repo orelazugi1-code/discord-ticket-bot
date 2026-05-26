@@ -113,6 +113,51 @@ db.exec(`
   );
 `);
 
+// ── Additional tables ────────────────────────────────────────────────────────
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS forms (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id         TEXT NOT NULL,
+    title            TEXT NOT NULL,
+    description      TEXT DEFAULT '',
+    channel_id       TEXT NOT NULL,
+    log_channel_id   TEXT,
+    message_id       TEXT,
+    button_label     TEXT DEFAULT 'Open Form',
+    mode             TEXT DEFAULT 'form',
+    role_id          TEXT,
+    accept_message   TEXT DEFAULT '',
+    decline_message  TEXT DEFAULT '',
+    active           INTEGER DEFAULT 1,
+    created_at       DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS form_questions (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    form_id   INTEGER NOT NULL,
+    question  TEXT NOT NULL,
+    position  INTEGER DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS form_responses (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    form_id    INTEGER NOT NULL,
+    user_id    TEXT NOT NULL,
+    guild_id   TEXT NOT NULL,
+    answers    TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS temp_roles (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id   TEXT NOT NULL,
+    user_id    TEXT NOT NULL,
+    role_id    TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
+`);
+
 // ── Migrations ────────────────────────────────────────────────────────────────
 
 [
@@ -180,6 +225,26 @@ const stmts = {
   getButtonRoles:        db.prepare('SELECT * FROM button_roles WHERE guild_id = ? ORDER BY created_at DESC'),
   updateButtonRoleMsgId: db.prepare('UPDATE button_roles SET message_id = ? WHERE id = ?'),
   deleteButtonRole:      db.prepare('DELETE FROM button_roles WHERE id = ? AND guild_id = ?'),
+
+  createForm:            db.prepare('INSERT INTO forms (guild_id, title, description, channel_id, log_channel_id, button_label, mode, role_id, accept_message, decline_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+  getForm:               db.prepare('SELECT * FROM forms WHERE id = ?'),
+  getForms:              db.prepare('SELECT * FROM forms WHERE guild_id = ? ORDER BY created_at DESC'),
+  updateFormMsgId:       db.prepare('UPDATE forms SET message_id = ? WHERE id = ?'),
+  updateForm:            db.prepare('UPDATE forms SET active = ? WHERE id = ?'),
+  deleteForm:            db.prepare('DELETE FROM forms WHERE id = ?'),
+  deleteFormQuestions:   db.prepare('DELETE FROM form_questions WHERE form_id = ?'),
+  deleteFormResponses:   db.prepare('DELETE FROM form_responses WHERE form_id = ?'),
+  addFormQuestion:       db.prepare('INSERT INTO form_questions (form_id, question, position) VALUES (?, ?, ?)'),
+  getFormQuestions:      db.prepare('SELECT * FROM form_questions WHERE form_id = ? ORDER BY position ASC'),
+  deleteFormQuestion:    db.prepare('DELETE FROM form_questions WHERE id = ?'),
+  saveFormResponse:      db.prepare('INSERT INTO form_responses (form_id, user_id, guild_id, answers) VALUES (?, ?, ?, ?)'),
+  getFormResponses:      db.prepare('SELECT * FROM form_responses WHERE form_id = ? ORDER BY created_at DESC LIMIT 100'),
+
+  addTempRole:           db.prepare('INSERT INTO temp_roles (guild_id, user_id, role_id, expires_at) VALUES (?, ?, ?, ?)'),
+  getExpiredTempRoles:   db.prepare("SELECT * FROM temp_roles WHERE expires_at <= datetime('now')"),
+  deleteTempRole:        db.prepare('DELETE FROM temp_roles WHERE id = ?'),
+
+  setXpDirect:           db.prepare('INSERT OR REPLACE INTO levels (guild_id, user_id, xp, level) VALUES (?, ?, ?, ?)'),
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -214,6 +279,11 @@ function addXp(guildId, userId, amount) {
   stmts.insertLevel.run(guildId, userId);
   stmts.addXpUpdate.run(amount, guildId, userId);
   return stmts.getLevel.get(guildId, userId);
+}
+
+function setXp(guildId, userId, xp) {
+  stmts.insertLevel.run(guildId, userId);
+  db.prepare('UPDATE levels SET xp = ? WHERE guild_id = ? AND user_id = ?').run(xp, guildId, userId);
 }
 
 // ── Exports ───────────────────────────────────────────────────────────────────
@@ -274,4 +344,27 @@ module.exports = {
   getButtonRoles:       guildId => stmts.getButtonRoles.all(guildId).map(r => ({ ...r, role_ids: JSON.parse(r.role_ids) })),
   updateButtonRoleMsgId:(id, msgId) => stmts.updateButtonRoleMsgId.run(msgId, id),
   deleteButtonRole:     (id, guildId) => stmts.deleteButtonRole.run(id, guildId),
+
+  setXp,
+
+  createForm: (guildId, title, description, channelId, logChannelId, buttonLabel, mode, roleId, acceptMsg, declineMsg) => {
+    const r = stmts.createForm.run(guildId, title, description, channelId, logChannelId ?? null, buttonLabel, mode, roleId ?? null, acceptMsg, declineMsg);
+    return Number(r.lastInsertRowid);
+  },
+  getForm:           id => stmts.getForm.get(id),
+  getForms:          guildId => stmts.getForms.all(guildId),
+  setFormMessageId:  (id, msgId) => stmts.updateFormMsgId.run(msgId, id),
+  setFormActive:     (id, active) => stmts.updateForm.run(active ? 1 : 0, id),
+  deleteForm:        id => { stmts.deleteFormResponses.run(id); stmts.deleteFormQuestions.run(id); stmts.deleteForm.run(id); },
+
+  addFormQuestion:   (formId, question, position) => stmts.addFormQuestion.run(formId, question, position),
+  getFormQuestions:  formId => stmts.getFormQuestions.all(formId),
+  deleteFormQuestion:id => stmts.deleteFormQuestion.run(id),
+
+  saveFormResponse:  (formId, userId, guildId, answers) => stmts.saveFormResponse.run(formId, userId, guildId, JSON.stringify(answers)),
+  getFormResponses:  formId => stmts.getFormResponses.all(formId).map(r => ({ ...r, answers: JSON.parse(r.answers) })),
+
+  addTempRole:         (guildId, userId, roleId, expiresAt) => stmts.addTempRole.run(guildId, userId, roleId, expiresAt),
+  getExpiredTempRoles: () => stmts.getExpiredTempRoles.all(),
+  deleteTempRole:      id => stmts.deleteTempRole.run(id),
 };

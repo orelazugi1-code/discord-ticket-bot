@@ -1,992 +1,408 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Bot Dashboard</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  :root {
-    --bg:       #1a1d24;
-    --surface:  #1e2130;
-    --elevated: #252840;
-    --border:   #2d3148;
-    --accent:   #5865f2;
-    --accent2:  #4752c4;
-    --text:     #dcddde;
-    --muted:    #8e9297;
-    --green:    #57f287;
-    --red:      #ed4245;
-    --yellow:   #faa61a;
-    --radius:   10px;
-  }
-
-  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
-
-  /* ── Top bar ── */
-  .topbar {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 0 24px;
-    height: 60px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-  }
-  .topbar-logo { font-size: 1.3rem; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; }
-  .topbar-logo span { color: var(--accent); }
-  .topbar-spacer { flex: 1; }
-
-  .guild-select {
-    background: var(--elevated);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 6px 12px;
-    border-radius: var(--radius);
-    font-size: .875rem;
-    cursor: pointer;
-    outline: none;
-    max-width: 220px;
-  }
-  .guild-select:focus { border-color: var(--accent); }
-
-  .user-chip {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: var(--elevated);
-    padding: 6px 12px;
-    border-radius: var(--radius);
-    font-size: .875rem;
-  }
-  .user-chip img { width: 28px; height: 28px; border-radius: 50%; }
-  .btn-logout {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--muted);
-    padding: 6px 12px;
-    border-radius: var(--radius);
-    cursor: pointer;
-    font-size: .8rem;
-    transition: all .15s;
-  }
-  .btn-logout:hover { border-color: var(--red); color: var(--red); }
-
-  /* ── Layout ── */
-  .layout { display: flex; flex: 1; overflow: hidden; }
-
-  /* ── Sidebar ── */
-  .sidebar {
-    width: 220px;
-    background: var(--surface);
-    border-right: 1px solid var(--border);
-    padding: 20px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    flex-shrink: 0;
-    overflow-y: auto;
-  }
-  .nav-section { font-size: .7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; padding: 8px 12px 4px; margin-top: 8px; }
-  .nav-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    border-radius: var(--radius);
-    cursor: pointer;
-    color: var(--muted);
-    font-size: .9rem;
-    transition: all .15s;
-    border: none;
-    background: transparent;
-    width: 100%;
-    text-align: left;
-  }
-  .nav-item:hover   { background: var(--elevated); color: var(--text); }
-  .nav-item.active  { background: var(--accent); color: #fff; }
-  .nav-icon { font-size: 1.1rem; width: 20px; text-align: center; }
-
-  /* ── Main ── */
-  .main { flex: 1; padding: 28px; overflow-y: auto; }
-  .page { display: none; }
-  .page.active { display: block; }
-
-  h2 { font-size: 1.3rem; color: #fff; margin-bottom: 20px; }
-  h3 { font-size: 1rem; color: #fff; margin-bottom: 12px; }
-
-  /* ── Stats cards ── */
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; margin-bottom: 28px; }
-  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; text-align: center; }
-  .stat-card .val { font-size: 2rem; font-weight: 700; color: #fff; }
-  .stat-card .lbl { font-size: .8rem; color: var(--muted); margin-top: 4px; }
-
-  /* ── Table ── */
-  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-  table { width: 100%; border-collapse: collapse; font-size: .875rem; }
-  th { background: var(--elevated); color: var(--muted); padding: 10px 14px; text-align: left; font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
-  td { padding: 10px 14px; border-top: 1px solid var(--border); vertical-align: middle; }
-  tr:hover td { background: var(--elevated); }
-
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: .75rem; font-weight: 600; }
-  .badge-open   { background: rgba(87,242,135,.15); color: var(--green); }
-  .badge-closed { background: rgba(237,66,69,.15);  color: var(--red);   }
-  .badge-admin  { background: rgba(250,166,26,.15); color: var(--yellow); }
-
-  /* ── Buttons ── */
-  .btn {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 7px 14px; border-radius: 6px; border: none;
-    cursor: pointer; font-size: .85rem; font-weight: 600;
-    transition: opacity .15s, transform .1s;
-  }
-  .btn:hover  { opacity: .85; }
-  .btn:active { transform: scale(.97); }
-  .btn-primary { background: var(--accent);  color: #fff; }
-  .btn-danger  { background: var(--red);     color: #fff; }
-  .btn-success { background: #3b7d4f;        color: #fff; }
-  .btn-ghost   { background: var(--elevated); color: var(--text); border: 1px solid var(--border); }
-  .btn-sm      { padding: 4px 10px; font-size: .8rem; }
-
-  /* ── Form ── */
-  .form-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 24px; }
-  .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
-  .form-group { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 160px; }
-  label { font-size: .8rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
-  input[type="text"], input[type="number"], textarea, select {
-    background: var(--elevated); border: 1px solid var(--border); color: var(--text);
-    padding: 8px 12px; border-radius: 6px; font-size: .9rem; outline: none; width: 100%;
-    transition: border-color .15s;
-  }
-  input:focus, textarea:focus, select:focus { border-color: var(--accent); }
-  textarea { resize: vertical; min-height: 80px; font-family: inherit; }
-  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; cursor: pointer; font-size: .9rem; }
-  .checkbox-row input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
-
-  /* ── Toggle switch ── */
-  .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
-  .toggle-row:last-child { border-bottom: none; }
-  .toggle-label { font-size: .9rem; }
-  .toggle-label small { display: block; color: var(--muted); font-size: .8rem; margin-top: 2px; }
-  .toggle { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
-  .toggle input { opacity: 0; width: 0; height: 0; }
-  .toggle-slider { position: absolute; inset: 0; background: var(--border); border-radius: 12px; transition: .2s; cursor: pointer; }
-  .toggle-slider::before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .2s; }
-  .toggle input:checked + .toggle-slider { background: var(--accent); }
-  .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
-
-  /* ── Filters ── */
-  .filter-bar { display: flex; gap: 8px; margin-bottom: 16px; }
-  .filter-btn { background: var(--elevated); border: 1px solid var(--border); color: var(--muted); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: .85rem; transition: all .15s; }
-  .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .filter-btn:hover:not(.active) { border-color: var(--accent); color: var(--text); }
-
-  /* ── Toast ── */
-  #toast {
-    position: fixed; bottom: 24px; right: 24px;
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 12px 18px; font-size: .875rem;
-    box-shadow: 0 8px 24px rgba(0,0,0,.4);
-    transition: opacity .3s, transform .3s; z-index: 999;
-    opacity: 0; transform: translateY(8px); pointer-events: none;
-  }
-  #toast.show { opacity: 1; transform: translateY(0); }
-  #toast.success { border-color: var(--green); color: var(--green); }
-  #toast.error   { border-color: var(--red);   color: var(--red);   }
-
-  /* ── Misc ── */
-  .loader { text-align: center; color: var(--muted); padding: 40px; font-size: .9rem; }
-  .no-guild { text-align: center; padding: 60px 20px; color: var(--muted); }
-  .no-guild .icon { font-size: 3rem; margin-bottom: 12px; }
-  .empty-state { text-align: center; padding: 40px; color: var(--muted); font-size: .9rem; }
-  .settings-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 20px; }
-  .settings-section h3 { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
-  .dirty-bar { background: rgba(250,166,26,.15); border: 1px solid var(--yellow); border-radius: 6px; padding: 8px 14px; margin-bottom: 16px; color: var(--yellow); font-size: .875rem; display: none; }
-  .dirty-bar.show { display: flex; align-items: center; gap: 8px; }
-  .rank-bar { background: var(--border); border-radius: 4px; height: 8px; width: 100%; }
-  .rank-bar-fill { background: var(--accent); border-radius: 4px; height: 100%; transition: width .5s; }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#09090f;--surface:#0f0f1a;--card:#13131f;--border:#1e1e30;
+  --accent:#7c5af7;--accent-dim:rgba(124,90,247,.15);--accent2:#f75a8b;
+  --text:#e2e2f0;--muted:#6b6b8a;--green:#3ddc84;--red:#f75a5a;
+  --yellow:#f7c95a;--radius:10px;--sidebar:240px;
+}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;overflow:hidden}
+.sidebar{width:var(--sidebar);flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;height:100vh;overflow-y:auto;position:sticky;top:0}
+.brand{padding:20px 16px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
+.brand-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;color:#fff;flex-shrink:0}
+.brand-name{font-weight:800;font-size:1rem;color:#fff;letter-spacing:.02em}
+.brand-sub{font-size:.7rem;color:var(--muted);margin-top:1px}
+.guild-wrap{padding:12px 12px 8px}
+.guild-label{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:6px}
+.guild-select{width:100%;background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:8px;font-size:.85rem;cursor:pointer;outline:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b6b8a' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+.guild-select:focus{border-color:var(--accent)}
+.nav-section{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:12px 16px 4px;margin-top:4px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 14px;border-radius:8px;cursor:pointer;color:var(--muted);font-size:.875rem;transition:all .15s;border:none;background:transparent;width:calc(100% - 16px);margin:1px 8px;text-align:left}
+.nav-item:hover{background:rgba(124,90,247,.1);color:var(--text)}
+.nav-item.active{background:var(--accent-dim);color:var(--accent);font-weight:600}
+.nav-item .ni{width:18px;text-align:center;font-size:.95rem;flex-shrink:0}
+.sidebar-spacer{flex:1}
+.user-info{padding:12px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.user-info img{width:32px;height:32px;border-radius:50%;border:2px solid var(--border)}
+.user-info .uname{font-size:.85rem;font-weight:600;color:var(--text)}
+.user-info .urole{font-size:.72rem;color:var(--muted)}
+.btn-logout{margin-left:auto;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:4px;border-radius:4px;transition:color .15s}
+.btn-logout:hover{color:var(--red)}.main{flex:1;height:100vh;overflow-y:auto;display:flex;flex-direction:column}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:56px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:50;flex-shrink:0}
+.topbar-title{font-size:1.05rem;font-weight:700;color:#fff}
+.topbar-spacer{flex:1}
+.topbar-badge{background:var(--accent-dim);color:var(--accent);font-size:.75rem;padding:3px 10px;border-radius:20px;font-weight:600}
+#dirtyBar{background:linear-gradient(90deg,rgba(124,90,247,.25),rgba(247,90,139,.15));border-bottom:1px solid rgba(124,90,247,.3);padding:8px 24px;display:none;align-items:center;gap:10px;font-size:.85rem;flex-shrink:0}
+#dirtyBar.show{display:flex}
+.btn-save-dirty{background:var(--accent);color:#fff;border:none;padding:5px 16px;border-radius:6px;font-size:.82rem;font-weight:600;cursor:pointer;transition:opacity .15s}
+.btn-save-dirty:hover{opacity:.85}
+.btn-discard-dirty{background:transparent;border:1px solid var(--border);color:var(--muted);padding:5px 14px;border-radius:6px;font-size:.82rem;cursor:pointer;transition:all .15s}
+.btn-discard-dirty:hover{border-color:var(--red);color:var(--red)}
+.content{padding:28px;flex:1}
+.page{display:none}
+.page.active{display:block}
+.loading{display:flex;align-items:center;justify-content:center;min-height:200px;color:var(--muted);gap:10px;font-size:.9rem}
+.spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+.page-header h2{font-size:1.3rem;color:#fff;font-weight:700}
+.page-header .ph-sub{font-size:.85rem;color:var(--muted);margin-top:3px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
+.card-title{font-size:.95rem;font-weight:700;color:#fff;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.card-title i{color:var(--accent);font-size:.9rem}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-bottom:24px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;position:relative;overflow:hidden}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.stat-val{font-size:1.9rem;font-weight:800;color:#fff;line-height:1}
+.stat-lbl{font-size:.75rem;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.05em}
+.stat-icon{position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:1.8rem;opacity:.1;color:var(--accent)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px}
+.table-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{background:rgba(255,255,255,.03);color:var(--muted);padding:10px 14px;text-align:left;font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)}
+td{padding:10px 14px;border-bottom:1px solid rgba(30,30,48,.6);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(124,90,247,.05)}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:.72rem;font-weight:700;letter-spacing:.03em}
+.badge-open{background:rgba(61,220,132,.12);color:var(--green)}
+.badge-closed{background:rgba(247,90,90,.12);color:var(--red)}
+.badge-on{background:rgba(61,220,132,.12);color:var(--green)}
+.badge-off{background:rgba(107,107,138,.12);color:var(--muted)}.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:7px;border:none;cursor:pointer;font-size:.83rem;font-weight:600;transition:opacity .15s,transform .1s;font-family:inherit}
+.btn:hover{opacity:.85}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:linear-gradient(135deg,var(--accent),#6040d0);color:#fff;box-shadow:0 2px 12px rgba(124,90,247,.3)}
+.btn-secondary{background:var(--card);border:1px solid var(--border);color:var(--text)}
+.btn-danger{background:rgba(247,90,90,.12);border:1px solid rgba(247,90,90,.25);color:var(--red)}
+.btn-success{background:rgba(61,220,132,.12);border:1px solid rgba(61,220,132,.25);color:var(--green)}
+.btn-sm{padding:4px 10px;font-size:.78rem;border-radius:5px}
+.btn-icon{padding:6px;border-radius:6px;background:var(--card);border:1px solid var(--border);color:var(--muted);cursor:pointer;transition:all .15s;font-size:.85rem}
+.btn-icon:hover{border-color:var(--accent);color:var(--accent)}
+.form-group{margin-bottom:14px}
+.form-label{display:block;font-size:.8rem;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
+.form-control{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:9px 12px;border-radius:8px;font-size:.875rem;outline:none;font-family:inherit;transition:border-color .15s}
+.form-control:focus{border-color:var(--accent)}
+.form-control::placeholder{color:var(--muted)}
+select.form-control{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b6b8a' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+textarea.form-control{resize:vertical;min-height:80px}
+.toggle-wrap{display:flex;align-items:center;gap:10px;cursor:pointer}
+.toggle{position:relative;width:42px;height:24px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0;position:absolute}
+.toggle-track{position:absolute;inset:0;background:var(--border);border-radius:12px;transition:background .2s}
+.toggle input:checked+.toggle-track{background:var(--accent)}
+.toggle-thumb{position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .2s;pointer-events:none}
+.toggle input:checked~.toggle-thumb{transform:translateX(18px)}
+.toggle-label{font-size:.875rem;color:var(--text)}
+#toast{position:fixed;bottom:24px;right:24px;z-index:999;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 18px;font-size:.875rem;color:var(--text);box-shadow:0 8px 32px rgba(0,0,0,.4);display:none;gap:10px;align-items:center;max-width:320px}
+#toast.show{display:flex}
+#toast.success{border-color:rgba(61,220,132,.4)}
+#toast.error{border-color:rgba(247,90,90,.4)}
+#toast .ti{font-size:1rem}
+#toast.success .ti{color:var(--green)}
+#toast.error .ti{color:var(--red)}
+.empty-state{text-align:center;padding:48px 24px;color:var(--muted)}
+.empty-state i{font-size:2.5rem;margin-bottom:12px;opacity:.4}
+.empty-state p{font-size:.9rem}
+.activity-item{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+.activity-item:last-child{border-bottom:none}
+.activity-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);margin-top:5px;flex-shrink:0}
+.activity-text{font-size:.85rem;color:var(--text);flex:1}
+.cmd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.cmd-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+.cmd-name{font-family:monospace;font-size:.9rem;color:var(--accent);font-weight:700;margin-bottom:4px}
+.cmd-desc{font-size:.8rem;color:var(--muted);line-height:1.4}
+.cmd-tag{display:inline-block;font-size:.68rem;padding:1px 6px;border-radius:3px;font-weight:600;margin-top:6px;margin-right:4px}
+.xp-bar-wrap{margin-top:6px;background:var(--border);border-radius:4px;height:6px;overflow:hidden}
+.xp-bar{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:4px;transition:width .4s}
+.form-list-item{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;display:flex;align-items:center;gap:14px}
+.fi-icon{width:40px;height:40px;border-radius:10px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:1.1rem;flex-shrink:0}
+.fi-info{flex:1;min-width:0}
+.fi-title{font-weight:700;color:#fff;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fi-meta{font-size:.77rem;color:var(--muted);margin-top:2px}
+.fi-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
+.question-item{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px}
+.q-num{width:24px;height:24px;border-radius:50%;background:var(--accent-dim);color:var(--accent);font-size:.75rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.q-text{flex:1;font-size:.875rem;color:var(--text)}
+.q-del{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;padding:4px;border-radius:4px;transition:color .15s}
+.q-del:hover{color:var(--red)}
+.resp-item{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px}
+.resp-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.resp-user{font-weight:600;font-size:.875rem;color:#fff}
+.resp-time{font-size:.75rem;color:var(--muted)}
+.resp-answer{font-size:.83rem;color:var(--text);margin-top:4px;padding:6px 8px;background:var(--card);border-radius:6px}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal-box{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto}
+.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.modal-title{font-size:1.05rem;font-weight:700;color:#fff}
+.modal-close{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;padding:4px;border-radius:4px;transition:color .15s}
+.modal-close:hover{color:var(--text)}
+.modal-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+@media(max-width:768px){.sidebar{display:none}.grid2{grid-template-columns:1fr}}
 </style>
 </head>
-<body>
-
-<!-- Top bar -->
-<header class="topbar">
-  <div class="topbar-logo">🤖 <span>TicketBot</span> Dashboard</div>
-  <div class="topbar-spacer"></div>
-  <select class="guild-select" id="guildSelect" onchange="onGuildChange()">
-    <option value="">— Select a server —</option>
-  </select>
-  <div class="user-chip">
-    <img id="userAvatar" src="" alt="avatar">
-    <span id="userName"></span>
+<body><nav class="sidebar" id="sidebar">
+  <div class="brand">
+    <div class="brand-icon"><i class="fa-solid fa-robot"></i></div>
+    <div><div class="brand-name">BotPanel</div><div class="brand-sub">Control Center</div></div>
   </div>
-  <button class="btn-logout" onclick="location.href='/auth/logout'">Logout</button>
-</header>
-
-<!-- Layout -->
-<div class="layout">
-  <!-- Sidebar -->
-  <nav class="sidebar">
-    <div class="nav-section">General</div>
-    <button class="nav-item active" data-page="overview"   onclick="showPage('overview', this)"><span class="nav-icon">📊</span> Overview</button>
-    <button class="nav-item"        data-page="tickets"    onclick="showPage('tickets', this)"><span class="nav-icon">🎫</span> Tickets</button>
-    <button class="nav-item"        data-page="commands"   onclick="showPage('commands', this)"><span class="nav-icon">📋</span> Commands</button>
-    <button class="nav-item"        data-page="slashcmds"  onclick="showPage('slashcmds', this)"><span class="nav-icon">⚡</span> Slash Cmds</button>
-
-    <div class="nav-section">Features</div>
-    <button class="nav-item"        data-page="moderation" onclick="showPage('moderation', this)"><span class="nav-icon">🛡️</span> Moderation</button>
-    <button class="nav-item"        data-page="welcome"    onclick="showPage('welcome', this)"><span class="nav-icon">👋</span> Welcome</button>
-    <button class="nav-item"        data-page="automod"    onclick="showPage('automod', this)"><span class="nav-icon">🤖</span> AutoMod</button>
-    <button class="nav-item"        data-page="levels"     onclick="showPage('levels', this)"><span class="nav-icon">⭐</span> Levels</button>
-    <button class="nav-item"        data-page="rolebtn"    onclick="showPage('rolebtn', this)"><span class="nav-icon">🎭</span> Role Buttons</button>
-
-    <div class="nav-section">Config</div>
-    <button class="nav-item"        data-page="settings"   onclick="showPage('settings', this)"><span class="nav-icon">⚙️</span> Settings</button>
-  </nav>
-
-  <!-- Main content -->
-  <main class="main">
-
-    <!-- ── Overview ── -->
-    <section class="page active" id="page-overview">
-      <div id="overviewContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
-    </section>
-
-    <!-- ── Tickets ── -->
-    <section class="page" id="page-tickets">
-      <div id="ticketsContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
-    </section>
-
-    <!-- ── Commands ── -->
-    <section class="page" id="page-commands">
-      <div id="commandsContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
-    </section>
-
-    <!-- ── Slash Commands ── -->
-    <section class="page" id="page-slashcmds">
-      <div id="slashcmdsContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
-    </section>
-
-    <!-- ── Moderation ── -->
-    <section class="page" id="page-moderation">
-      <div id="moderationContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
-    </section>
-
-    <!-- ── Welcome ── -->
-    <section class="page" id="page-welcome">
-      <div id="welcomeContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
-    </section>
-
-    <!-- ── AutoMod ── -->
-    <section class="page" id="page-automod">
-      <div id="automodContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
-    </section>
-
-    <!-- ── Levels ── -->
-    <section class="page" id="page-levels">
-      <div id="levelsContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
-    </section>
-
-    <!-- ── Role Buttons ── -->
-    <section class="page" id="page-rolebtn">
-      <div id="rolebtnContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
-    </section>
-
-    <!-- ── Settings ── -->
-    <section class="page" id="page-settings">
-      <div id="settingsContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
-    </section>
-
-  </main>
+  <div class="guild-wrap">
+    <div class="guild-label">Server</div>
+    <select class="guild-select" id="guildSelect"><option value="">— Select Server —</option></select>
+  </div>
+  <div class="nav-section">Overview</div>
+  <button class="nav-item active" data-page="overview"><i class="fa-solid fa-gauge-high ni"></i> Dashboard</button>
+  <div class="nav-section">Management</div>
+  <button class="nav-item" data-page="tickets"><i class="fa-solid fa-ticket ni"></i> Tickets</button>
+  <button class="nav-item" data-page="forms"><i class="fa-solid fa-wpforms ni"></i> Forms</button>
+  <button class="nav-item" data-page="rolebuttons"><i class="fa-solid fa-hand-pointer ni"></i> Role Buttons</button>
+  <div class="nav-section">Configuration</div>
+  <button class="nav-item" data-page="moderation"><i class="fa-solid fa-shield-halved ni"></i> Moderation</button>
+  <button class="nav-item" data-page="welcome"><i class="fa-solid fa-door-open ni"></i> Welcome</button>
+  <button class="nav-item" data-page="automod"><i class="fa-solid fa-wand-magic-sparkles ni"></i> AutoMod</button>
+  <button class="nav-item" data-page="levels"><i class="fa-solid fa-star ni"></i> Levels</button>
+  <div class="nav-section">Reference</div>
+  <button class="nav-item" data-page="commands"><i class="fa-solid fa-terminal ni"></i> Commands</button>
+  <div class="nav-section">System</div>
+  <button class="nav-item" data-page="settings"><i class="fa-solid fa-sliders ni"></i> Settings</button>
+  <div class="sidebar-spacer"></div>
+  <div class="user-info" id="userInfo" style="display:none">
+    <img id="userAvatar" src="" alt="">
+    <div><div class="uname" id="userName"></div><div class="urole">Administrator</div></div>
+    <button class="btn-logout" title="Logout" onclick="location.href='/auth/logout'"><i class="fa-solid fa-right-from-bracket"></i></button>
+  </div>
+</nav>
+<div class="main">
+  <div class="topbar">
+    <div><div class="topbar-title" id="topbarTitle">Dashboard</div></div>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-badge" id="topbarGuild" style="display:none"></div>
+  </div>
+  <div id="dirtyBar">
+    <i class="fa-solid fa-circle-exclamation" style="color:var(--yellow)"></i>
+    <span>You have unsaved changes</span>
+    <button class="btn-discard-dirty" id="btnDiscard">Discard</button>
+    <button class="btn-save-dirty" id="btnSave">Save Changes</button>
+  </div>
+  <div class="content">    <div class="page active" id="page-overview">
+      <div class="page-header"><div><h2>Dashboard Overview</h2><div class="ph-sub">Monitor your bot at a glance</div></div></div>
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card"><i class="fa-solid fa-ticket stat-icon"></i><div class="stat-val" id="statTickets">—</div><div class="stat-lbl">Tickets</div></div>
+        <div class="stat-card"><i class="fa-solid fa-users stat-icon"></i><div class="stat-val" id="statMembers">—</div><div class="stat-lbl">Members</div></div>
+        <div class="stat-card"><i class="fa-solid fa-wpforms stat-icon"></i><div class="stat-val" id="statForms">—</div><div class="stat-lbl">Forms</div></div>
+        <div class="stat-card"><i class="fa-solid fa-star stat-icon"></i><div class="stat-val" id="statLevels">—</div><div class="stat-lbl">Ranked Users</div></div>
+      </div>
+      <div class="grid2">
+        <div class="card"><div class="card-title"><i class="fa-solid fa-clock-rotate-left"></i> Recent Tickets</div><div id="recentTickets"><div class="loading"><div class="spinner"></div></div></div></div>
+        <div class="card"><div class="card-title"><i class="fa-solid fa-trophy"></i> Top Members (XP)</div><div id="topMembers"><div class="loading"><div class="spinner"></div></div></div></div>
+      </div>
+    </div>
+    <div class="page" id="page-tickets">
+      <div class="page-header"><div><h2>Tickets</h2><div class="ph-sub">Manage support tickets</div></div></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>ID</th><th>User</th><th>Status</th><th>Channel</th><th>Created</th></tr></thead>
+        <tbody id="ticketsBody"><tr><td colspan="5"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
+      </table></div>
+    </div>
+    <div class="page" id="page-forms">
+      <div class="page-header"><div><h2>Forms</h2><div class="ph-sub">Manage form panels created with /form-setup</div></div></div>
+      <div id="formsList"><div class="loading"><div class="spinner"></div> Loading…</div></div>
+    </div>
+    <div class="page" id="page-rolebuttons">
+      <div class="page-header"><div><h2>Role Buttons</h2><div class="ph-sub">Self-assignable role panels</div></div></div>
+      <div class="empty-state"><i class="fa-solid fa-hand-pointer"></i><p>No role panels yet. Use <code>/rolebutton</code> to create one.</p></div>
+    </div>
+    <div class="page" id="page-moderation">
+      <div class="page-header"><div><h2>Moderation</h2><div class="ph-sub">Configure log channels and mod settings</div></div></div>
+      <div class="grid2">
+        <div class="card"><div class="card-title"><i class="fa-solid fa-scroll"></i> Recent Actions</div><div id="modLogList"><div class="empty-state" style="padding:20px"><i class="fa-solid fa-scroll"></i><p>Mod log coming soon</p></div></div></div>
+        <div class="card">
+          <div class="card-title"><i class="fa-solid fa-gear"></i> Mod Settings</div>
+          <div class="form-group"><label class="form-label">Log Channel</label><select class="form-control" id="modLogChannel"><option value="">— None —</option></select></div>
+          <div class="form-group"><label class="form-label">Muted Role</label><select class="form-control" id="modMutedRole"><option value="">— None —</option></select></div>
+          <button class="btn btn-primary" id="btnSaveMod"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+        </div>
+      </div>
+    </div>
+    <div class="page" id="page-welcome">
+      <div class="page-header"><div><h2>Welcome</h2><div class="ph-sub">Greet new members automatically</div></div></div>
+      <div class="card" style="max-width:560px">
+        <div class="card-title"><i class="fa-solid fa-door-open"></i> Welcome Settings</div>
+        <div class="form-group"><label class="toggle-wrap"><label class="toggle"><input type="checkbox" id="welcomeEnabled"><div class="toggle-track"></div><div class="toggle-thumb"></div></label><span class="toggle-label">Enable welcome messages</span></label></div>
+        <div class="form-group"><label class="form-label">Welcome Channel</label><select class="form-control" id="welcomeChannel"><option value="">— Select —</option></select></div>
+        <div class="form-group"><label class="form-label">Message (use {user} {server} {count})</label><textarea class="form-control" id="welcomeMsg" rows="3" placeholder="Welcome {user} to {server}!"></textarea></div>
+        <div class="form-group"><label class="form-label">Auto-assign Role</label><select class="form-control" id="welcomeRole"><option value="">— None —</option></select></div>
+        <button class="btn btn-primary" id="btnSaveWelcome"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+      </div>
+    </div>    <div class="page" id="page-automod">
+      <div class="page-header"><div><h2>AutoMod</h2><div class="ph-sub">Automatic message filtering</div></div></div>
+      <div class="grid2">
+        <div class="card"><div class="card-title"><i class="fa-solid fa-link-slash"></i> Anti-Link</div>
+          <div class="form-group"><label class="toggle-wrap"><label class="toggle"><input type="checkbox" id="antiLinkEnabled"><div class="toggle-track"></div><div class="toggle-thumb"></div></label><span class="toggle-label">Block external links</span></label></div>
+          <div class="form-group"><label class="form-label">Punishment</label><select class="form-control" id="antiLinkPunish"><option value="delete">Delete message</option><option value="warn">Warn user</option><option value="mute">Mute user</option></select></div>
+        </div>
+        <div class="card"><div class="card-title"><i class="fa-solid fa-bomb"></i> Anti-Spam</div>
+          <div class="form-group"><label class="toggle-wrap"><label class="toggle"><input type="checkbox" id="antiSpamEnabled"><div class="toggle-track"></div><div class="toggle-thumb"></div></label><span class="toggle-label">Enable spam detection</span></label></div>
+          <div class="form-group"><label class="form-label">Max messages / 5s</label><input type="number" class="form-control" id="antiSpamLimit" value="5" min="2" max="20"></div>
+        </div>
+        <div class="card"><div class="card-title"><i class="fa-solid fa-font"></i> Bad Words Filter</div>
+          <div class="form-group"><label class="toggle-wrap"><label class="toggle"><input type="checkbox" id="badWordsEnabled"><div class="toggle-track"></div><div class="toggle-thumb"></div></label><span class="toggle-label">Enable word filter</span></label></div>
+          <div class="form-group"><label class="form-label">Blocked words (comma-separated)</label><textarea class="form-control" id="badWordsList" rows="3" placeholder="word1, word2"></textarea></div>
+        </div>
+        <div class="card"><div class="card-title"><i class="fa-solid fa-at"></i> Anti-Mention Spam</div>
+          <div class="form-group"><label class="toggle-wrap"><label class="toggle"><input type="checkbox" id="antiMentionEnabled"><div class="toggle-track"></div><div class="toggle-thumb"></div></label><span class="toggle-label">Limit mass mentions</span></label></div>
+          <div class="form-group"><label class="form-label">Max mentions per message</label><input type="number" class="form-control" id="antiMentionLimit" value="5" min="1" max="20"></div>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="btnSaveAutomod"><i class="fa-solid fa-floppy-disk"></i> Save AutoMod</button>
+    </div>
+    <div class="page" id="page-levels">
+      <div class="page-header"><div><h2>Levels &amp; XP</h2><div class="ph-sub">Leaderboard and XP configuration</div></div></div>
+      <div class="grid2">
+        <div class="card"><div class="card-title"><i class="fa-solid fa-gear"></i> XP Settings</div>
+          <div class="form-group"><label class="toggle-wrap"><label class="toggle"><input type="checkbox" id="xpEnabled"><div class="toggle-track"></div><div class="toggle-thumb"></div></label><span class="toggle-label">Enable XP system</span></label></div>
+          <div class="form-group"><label class="form-label">XP per message (min – max)</label><div style="display:flex;gap:8px"><input type="number" class="form-control" id="xpMin" value="15" min="1" max="100"><input type="number" class="form-control" id="xpMax" value="25" min="1" max="100"></div></div>
+          <div class="form-group"><label class="form-label">Level-up Channel</label><select class="form-control" id="xpChannel"><option value="">— Same channel —</option></select></div>
+          <button class="btn btn-primary" id="btnSaveXp"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+        </div>
+        <div class="card"><div class="card-title"><i class="fa-solid fa-trophy"></i> Leaderboard</div><div id="leaderboardList"><div class="loading"><div class="spinner"></div></div></div></div>
+      </div>
+    </div>
+    <div class="page" id="page-commands">
+      <div class="page-header"><div><h2>Commands Reference</h2><div class="ph-sub">All available slash commands</div></div></div>
+      <div class="cmd-grid" id="cmdGrid"></div>
+    </div>
+    <div class="page" id="page-settings">
+      <div class="page-header"><div><h2>Settings</h2><div class="ph-sub">Bot configuration for this server</div></div></div>
+      <div class="card" style="max-width:560px">
+        <div class="card-title"><i class="fa-solid fa-gear"></i> General Settings</div>
+        <div class="form-group"><label class="form-label">Bot Prefix (legacy)</label><input type="text" class="form-control" id="settingsPrefix" value="!" maxlength="5"></div>
+        <div class="form-group"><label class="form-label">Log Channel</label><select class="form-control" id="settingsLogChannel"><option value="">— None —</option></select></div>
+        <div class="form-group"><label class="form-label">Admin Role</label><select class="form-control" id="settingsAdminRole"><option value="">— None —</option></select></div>
+        <button class="btn btn-primary" id="btnSaveSettings"><i class="fa-solid fa-floppy-disk"></i> Save Settings</button>
+      </div>
+    </div>
+  </div>
+</div><div class="modal-overlay" id="modalFormDetail" style="display:none">
+  <div class="modal-box">
+    <div class="modal-header"><div class="modal-title" id="modalFormTitle">Form Details</div><button class="modal-close" onclick="closeModal('modalFormDetail')"><i class="fa-solid fa-xmark"></i></button></div>
+    <div id="modalFormBody"></div>
+    <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('modalFormDetail')">Close</button></div>
+  </div>
 </div>
-
-<!-- Toast -->
-<div id="toast"></div>
-
+<div class="modal-overlay" id="modalFormResponses" style="display:none">
+  <div class="modal-box" style="max-width:600px">
+    <div class="modal-header"><div class="modal-title" id="modalRespTitle">Responses</div><button class="modal-close" onclick="closeModal('modalFormResponses')"><i class="fa-solid fa-xmark"></i></button></div>
+    <div id="modalRespBody"></div>
+    <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('modalFormResponses')">Close</button></div>
+  </div>
+</div>
+<div id="toast"><i class="fa-solid fa-circle-check ti"></i><span id="toastMsg"></span></div>
 <script>
-// ── State ──────────────────────────────────────────────────────────────────────
-let currentGuild = null;
-let ticketFilter = 'all';
-let settingsDirty = false;
-
-// ── Init ───────────────────────────────────────────────────────────────────────
-(async function init() {
-  const res = await fetch('/api/me').catch(() => null);
-  if (!res || !res.ok) return location.replace('/');
-
-  const { user, guilds } = await res.json();
-
-  const avatar = user.avatar
-    ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`
-    : `https://cdn.discordapp.com/embed/avatars/0.png`;
-  document.getElementById('userAvatar').src = avatar;
-  document.getElementById('userName').textContent = user.username;
-
-  const sel = document.getElementById('guildSelect');
-  guilds.forEach(g => {
-    const opt = document.createElement('option');
-    opt.value = g.id; opt.textContent = g.name;
-    sel.appendChild(opt);
-  });
-})();
-
-// ── Unsaved changes tracking ───────────────────────────────────────────────────
-function markDirty() {
-  settingsDirty = true;
-  document.getElementById('settingsDirtyBar').classList.add('show');
+var currentGuild=null,dirty=false,dirtyCallback=null;
+function toast(msg,type){type=type||'success';var el=document.getElementById('toast');el.className='show '+type;el.querySelector('.ti').className=type==='success'?'fa-solid fa-circle-check ti':'fa-solid fa-circle-exclamation ti';document.getElementById('toastMsg').textContent=msg;clearTimeout(el._t);el._t=setTimeout(function(){el.classList.remove('show')},3000);}
+function setDirty(v,cb){dirty=v;if(cb)dirtyCallback=cb;document.getElementById('dirtyBar').classList[v?'add':'remove']('show');}
+document.getElementById('btnDiscard').onclick=function(){setDirty(false);if(dirtyCallback)dirtyCallback('discard');dirtyCallback=null;};
+document.getElementById('btnSave').onclick=function(){if(dirtyCallback)dirtyCallback('save');setDirty(false);dirtyCallback=null;};
+var PAGE_TITLES={overview:'Dashboard Overview',tickets:'Tickets',forms:'Forms',rolebuttons:'Role Buttons',moderation:'Moderation',welcome:'Welcome',automod:'AutoMod',levels:'Levels & XP',commands:'Commands Reference',settings:'Settings'};
+function navigate(page){
+  document.querySelectorAll('.nav-item').forEach(function(b){b.classList.toggle('active',b.dataset.page===page);});
+  document.querySelectorAll('.page').forEach(function(p){p.classList.toggle('active',p.id==='page-'+page);});
+  document.getElementById('topbarTitle').textContent=PAGE_TITLES[page]||page;
+  if(currentGuild)loadPage(page);
 }
-
-window.addEventListener('beforeunload', e => {
-  if (settingsDirty) { e.preventDefault(); e.returnValue = ''; }
-});
-
-// ── Navigation ─────────────────────────────────────────────────────────────────
-function showPage(name, btn) {
-  if (settingsDirty && document.getElementById('page-settings').classList.contains('active')) {
-    if (!confirm('You have unsaved changes in Settings. Leave without saving?')) return;
-    settingsDirty = false;
-  }
-
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-  document.getElementById('page-' + name).classList.add('active');
-  btn.classList.add('active');
-
-  if (currentGuild) loadPage(name);
+document.querySelectorAll('.nav-item[data-page]').forEach(function(b){b.addEventListener('click',function(){navigate(b.dataset.page);});});
+var guildSel=document.getElementById('guildSelect');
+async function loadGuilds(){
+  try{
+    var r=await fetch('/api/guilds');if(!r.ok){if(r.status===401)location.href='/';return;}
+    var guilds=await r.json();
+    guildSel.innerHTML='<option value="">— Select Server —</option>';
+    guilds.forEach(function(g){var o=document.createElement('option');o.value=g.id;o.textContent=g.name;guildSel.appendChild(o);});
+    var last=localStorage.getItem('lastGuild');
+    if(last&&guilds.find(function(g){return g.id===last;})){guildSel.value=last;selectGuild(last);}
+  }catch(e){console.error(e);}
 }
-
-function loadPage(name) {
-  if (name === 'overview')   loadOverview();
-  if (name === 'tickets')    loadTickets();
-  if (name === 'commands')   loadCommands();
-  if (name === 'slashcmds') loadSlashCommands();
-  if (name === 'moderation') loadModeration();
-  if (name === 'welcome')    loadWelcome();
-  if (name === 'automod')    loadAutomod();
-  if (name === 'levels')     loadLevels();
-  if (name === 'rolebtn')    loadRoleButtons();
-  if (name === 'settings')   loadSettings();
+function selectGuild(id){
+  currentGuild=id;
+  localStorage.setItem('lastGuild',id);
+  var badge=document.getElementById('topbarGuild');
+  badge.textContent=guildSel.options[guildSel.selectedIndex]?guildSel.options[guildSel.selectedIndex].text:'';
+  badge.style.display=id?'':'none';
+  loadPage(getActivePage());
 }
-
-function onGuildChange() {
-  const sel = document.getElementById('guildSelect');
-  currentGuild = sel.value || null;
-  settingsDirty = false;
-  const active = document.querySelector('.nav-item.active');
-  if (currentGuild && active) loadPage(active.dataset.page);
-}
-
-// ── Overview ───────────────────────────────────────────────────────────────────
-async function loadOverview() {
-  const el = document.getElementById('overviewContent');
-  el.innerHTML = '<div class="loader">Loading…</div>';
-  const data = await api(`/api/guild/${currentGuild}/overview`);
-  if (!data) return;
-  const s = data.stats;
-  el.innerHTML = `
-    <h2>📊 Overview</h2>
-    <div class="stats-grid">
-      <div class="stat-card"><div class="val">${s.total ?? 0}</div><div class="lbl">Total Tickets</div></div>
-      <div class="stat-card"><div class="val" style="color:var(--green)">${s.open_count ?? 0}</div><div class="lbl">Open</div></div>
-      <div class="stat-card"><div class="val" style="color:var(--red)">${s.closed_count ?? 0}</div><div class="lbl">Closed</div></div>
-      <div class="stat-card"><div class="val" style="color:var(--yellow)">${data.commandCount}</div><div class="lbl">Commands</div></div>
-    </div>`;
-}
-
-// ── Tickets ────────────────────────────────────────────────────────────────────
-async function loadTickets() {
-  const el = document.getElementById('ticketsContent');
-  el.innerHTML = '<div class="loader">Loading…</div>';
-  const url = `/api/guild/${currentGuild}/tickets` + (ticketFilter !== 'all' ? `?status=${ticketFilter}` : '');
-  const tickets = await api(url);
-  if (!tickets) return;
-
-  const rows = tickets.length
-    ? tickets.map(t => `
-        <tr>
-          <td>#${t.id}</td>
-          <td>${esc(t.subject)}</td>
-          <td><code>${t.user_id}</code></td>
-          <td><span class="badge badge-${t.status}">${t.status.toUpperCase()}</span></td>
-          <td>${new Date(t.created_at).toLocaleDateString()}</td>
-          <td><button class="btn btn-ghost btn-sm" onclick="viewTranscript(${t.id})">📄 Transcript</button></td>
-        </tr>`).join('')
-    : `<tr><td colspan="6"><div class="empty-state">No tickets found.</div></td></tr>`;
-
-  el.innerHTML = `
-    <h2>🎫 Tickets</h2>
-    <div class="filter-bar">
-      ${['all','open','closed'].map(f => `<button class="filter-btn${ticketFilter===f?' active':''}" onclick="setFilter('${f}')">${f.charAt(0).toUpperCase()+f.slice(1)}</button>`).join('')}
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>#</th><th>Subject</th><th>User ID</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
-}
-
-function setFilter(f) { ticketFilter = f; loadTickets(); }
-function viewTranscript(ticketId) { window.open(`/api/guild/${currentGuild}/tickets/${ticketId}/transcript`, '_blank'); }
-
-// ── Commands ───────────────────────────────────────────────────────────────────
-async function loadCommands() {
-  const el = document.getElementById('commandsContent');
-  el.innerHTML = '<div class="loader">Loading…</div>';
-  const cmds = await api(`/api/guild/${currentGuild}/commands`);
-  if (!cmds) return;
-
-  const rows = cmds.length
-    ? cmds.map(c => `
-        <tr>
-          <td><code>!${esc(c.name)}</code></td>
-          <td>${esc(c.response)}</td>
-          <td>${c.admin_only ? '<span class="badge badge-admin">ADMIN</span>' : '—'}</td>
-          <td>${new Date(c.created_at).toLocaleDateString()}</td>
-          <td><button class="btn btn-danger btn-sm" onclick="deleteCommand('${esc(c.name)}')">🗑 Remove</button></td>
-        </tr>`).join('')
-    : `<tr><td colspan="5"><div class="empty-state">No custom commands yet.</div></td></tr>`;
-
-  el.innerHTML = `
-    <h2>📋 Custom Commands</h2>
-    <div class="form-card">
-      <h3>Add Command</h3>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Name (without !)</label>
-          <input type="text" id="cmdName" placeholder="rules" maxlength="32">
-        </div>
-        <div class="form-group" style="flex:2">
-          <label>Response</label>
-          <input type="text" id="cmdResponse" placeholder="Please read our #rules channel.">
-        </div>
-        <div class="form-group" style="flex:0;min-width:auto;justify-content:flex-end">
-          <label style="visibility:hidden">.</label>
-          <label class="checkbox-row"><input type="checkbox" id="cmdAdmin"> Admin only</label>
-        </div>
-        <div class="form-group" style="flex:0;min-width:auto;justify-content:flex-end">
-          <label style="visibility:hidden">.</label>
-          <button class="btn btn-primary" onclick="addCommand()">Add Command</button>
-        </div>
-      </div>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Command</th><th>Response</th><th>Restriction</th><th>Created</th><th>Actions</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
-}
-
-async function addCommand() {
-  const name     = document.getElementById('cmdName').value.trim();
-  const response = document.getElementById('cmdResponse').value.trim();
-  const adminOnly = document.getElementById('cmdAdmin').checked;
-  if (!name || !response) return toast('Name and response are required.', 'error');
-  const ok = await api(`/api/guild/${currentGuild}/commands`, 'POST', { name, response, admin_only: adminOnly });
-  if (ok) { toast('Command added!', 'success'); loadCommands(); }
-}
-
-async function deleteCommand(name) {
-  if (!confirm(`Remove !${name}?`)) return;
-  const ok = await api(`/api/guild/${currentGuild}/commands/${name}`, 'DELETE');
-  if (ok) { toast('Command removed.', 'success'); loadCommands(); }
-}
-
-// ── Slash Commands ─────────────────────────────────────────────────────────────
-const PROJECT_COMMANDS = new Set([
-  'ticket-setup','close','add-user','remove-user','ticket-stats',
-  'add-command','remove-command','commands',
-  'ban','kick','timeout','warn','warnings','clear-warn','purge',
-  'welcome-setup','button-roles','rank','leaderboard','set-level-role','automod',
-]);
-
-async function loadSlashCommands() {
-  const el = document.getElementById('slashcmdsContent');
-  el.innerHTML = '<div class="loader">Loading…</div>';
-  const cmds = await api(`/api/guild/${currentGuild}/slash-commands`);
-  if (!cmds) return;
-
-  const foreignCount = cmds.filter(c => !PROJECT_COMMANDS.has(c.name)).length;
-  const rows = cmds.length
-    ? cmds.map(c => {
-        const isProject = PROJECT_COMMANDS.has(c.name);
-        const scopeBadge = c.scope === 'global'
-          ? '<span class="badge" style="background:rgba(88,101,242,.2);color:#7289da">GLOBAL</span>'
-          : '<span class="badge" style="background:rgba(87,242,135,.1);color:var(--green)">GUILD</span>';
-        const typeBadge = isProject
-          ? '<span class="badge" style="background:rgba(87,242,135,.15);color:var(--green)">This Project</span>'
-          : '<span class="badge" style="background:rgba(237,66,69,.15);color:var(--red)">Foreign</span>';
-        const deleteBtn = isProject
-          ? `<button class="btn btn-ghost btn-sm" style="opacity:.45;cursor:not-allowed" disabled title="Protected">🔒 Protected</button>`
-          : `<button class="btn btn-danger btn-sm" onclick="deleteSlashCommand('${c.id}','${c.scope}','${esc(c.name)}')">🗑 Delete</button>`;
-        return `<tr>
-          <td><code>/${esc(c.name)}</code></td>
-          <td style="color:var(--muted);font-size:.8rem">${esc(c.description ?? '')}</td>
-          <td>${scopeBadge}</td><td>${typeBadge}</td>
-          <td style="color:var(--muted)">${c.options?.length ? c.options.length + ' option(s)' : '—'}</td>
-          <td>${deleteBtn}</td>
-        </tr>`;
-      }).join('')
-    : `<tr><td colspan="6"><div class="empty-state">No slash commands registered.</div></td></tr>`;
-
-  const bulkBtn = foreignCount > 0
-    ? `<button class="btn btn-danger" onclick="deleteAllForeign()">🧹 Delete All Foreign (${foreignCount})</button>`
-    : `<button class="btn btn-ghost" disabled style="opacity:.5">✅ No foreign commands</button>`;
-
-  el.innerHTML = `
-    <h2>⚡ Slash Commands</h2>
-    <p style="color:var(--muted);font-size:.875rem;margin-bottom:16px">Commands marked <strong style="color:var(--green)">This Project</strong> are re-registered on startup. <strong style="color:var(--red)">Foreign</strong> commands are leftovers from other projects.</p>
-    <div style="display:flex;gap:10px;margin-bottom:16px">
-      <button class="btn btn-ghost" onclick="loadSlashCommands()">🔄 Refresh</button>${bulkBtn}
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Command</th><th>Description</th><th>Scope</th><th>Type</th><th>Options</th><th>Actions</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
-}
-
-async function deleteSlashCommand(id, scope, name) {
-  if (!confirm(`Delete /${name}? This is permanent.`)) return;
-  const ok = await api(`/api/guild/${currentGuild}/slash-commands/${id}?scope=${scope}`, 'DELETE');
-  if (ok) { toast(`/${name} deleted.`, 'success'); loadSlashCommands(); }
-}
-
-async function deleteAllForeign() {
-  if (!confirm('Delete ALL foreign slash commands?')) return;
-  const cmds = await api(`/api/guild/${currentGuild}/slash-commands`);
-  if (!cmds) return;
-  const foreign = cmds.filter(c => !PROJECT_COMMANDS.has(c.name));
-  let deleted = 0;
-  for (const c of foreign) {
-    const ok = await api(`/api/guild/${currentGuild}/slash-commands/${c.id}?scope=${c.scope}`, 'DELETE');
-    if (ok) deleted++;
-  }
-  toast(`Deleted ${deleted} foreign command(s).`, 'success');
-  loadSlashCommands();
-}
-
-// ── Moderation ─────────────────────────────────────────────────────────────────
-async function loadModeration() {
-  const el = document.getElementById('moderationContent');
-  el.innerHTML = '<div class="loader">Loading…</div>';
-  const warnings = await api(`/api/guild/${currentGuild}/warnings`);
-  if (!warnings) return;
-
-  const rows = warnings.length
-    ? warnings.map(w => `
-        <tr>
-          <td>#${w.id}</td>
-          <td><code>${w.user_id}</code></td>
-          <td><code>${w.moderator_id}</code></td>
-          <td>${esc(w.reason)}</td>
-          <td>${new Date(w.created_at).toLocaleDateString()}</td>
-          <td><button class="btn btn-danger btn-sm" onclick="deleteWarning(${w.id})">🗑 Remove</button></td>
-        </tr>`).join('')
-    : `<tr><td colspan="6"><div class="empty-state">No warnings logged.</div></td></tr>`;
-
-  el.innerHTML = `
-    <h2>🛡️ Moderation — Warning Log</h2>
-    <p style="color:var(--muted);font-size:.875rem;margin-bottom:16px">Use <code>/warn</code> in Discord to add warnings. Use <code>/warnings @user</code> or <code>/clear-warn @user</code> to manage them.</p>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>#</th><th>User ID</th><th>Moderator ID</th><th>Reason</th><th>Date</th><th>Actions</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
-}
-
-async function deleteWarning(id) {
-  if (!confirm(`Remove warning #${id}?`)) return;
-  const ok = await api(`/api/guild/${currentGuild}/warnings/${id}`, 'DELETE');
-  if (ok) { toast('Warning removed.', 'success'); loadModeration(); }
-}
-
-// ── Welcome ────────────────────────────────────────────────────────────────────
-async function loadWelcome() {
-  const el = document.getElementById('welcomeContent');
-  el.innerHTML = '<div class="loader">Loading…</div>';
-  const cfg = await api(`/api/guild/${currentGuild}/settings`);
-  if (!cfg) return;
-
-  el.innerHTML = `
-    <h2>👋 Welcome & Goodbye</h2>
-    <p style="color:var(--muted);font-size:.875rem;margin-bottom:20px">Placeholders: <code>{user}</code> <code>{username}</code> <code>{server}</code> <code>{membercount}</code></p>
-
-    <div class="settings-section">
-      <h3>Welcome Messages</h3>
-      <div class="toggle-row">
-        <div class="toggle-label">Enable welcome messages <small>Send a message when a member joins</small></div>
-        <label class="toggle"><input type="checkbox" id="wEnabled" ${cfg.welcome_enabled ? 'checked' : ''}><span class="toggle-slider"></span></label>
-      </div>
-      <div class="form-group" style="margin-top:16px">
-        <label>Welcome Channel ID</label>
-        <input type="text" id="wChannel" value="${esc(cfg.welcome_channel_id ?? '')}" placeholder="Channel ID">
-      </div>
-      <div class="form-group" style="margin-top:12px">
-        <label>Welcome Message</label>
-        <textarea id="wMsg" rows="3">${esc(cfg.welcome_message ?? 'Welcome {user} to {server}!')}</textarea>
-      </div>
-    </div>
-
-    <div class="settings-section">
-      <h3>Goodbye Messages</h3>
-      <div class="toggle-row">
-        <div class="toggle-label">Enable goodbye messages <small>Send a message when a member leaves</small></div>
-        <label class="toggle"><input type="checkbox" id="gEnabled" ${cfg.goodbye_enabled ? 'checked' : ''}><span class="toggle-slider"></span></label>
-      </div>
-      <div class="form-group" style="margin-top:16px">
-        <label>Goodbye Channel ID</label>
-        <input type="text" id="gChannel" value="${esc(cfg.goodbye_channel_id ?? '')}" placeholder="Channel ID">
-      </div>
-      <div class="form-group" style="margin-top:12px">
-        <label>Goodbye Message</label>
-        <textarea id="gMsg" rows="3">${esc(cfg.goodbye_message ?? 'Goodbye {user}, we will miss you!')}</textarea>
-      </div>
-    </div>
-
-    <button class="btn btn-primary" onclick="saveWelcome()">💾 Save Welcome Settings</button>`;
-}
-
-async function saveWelcome() {
-  const updates = {
-    welcome_enabled:    document.getElementById('wEnabled').checked  ? 1 : 0,
-    welcome_channel_id: document.getElementById('wChannel').value.trim() || null,
-    welcome_message:    document.getElementById('wMsg').value,
-    goodbye_enabled:    document.getElementById('gEnabled').checked  ? 1 : 0,
-    goodbye_channel_id: document.getElementById('gChannel').value.trim() || null,
-    goodbye_message:    document.getElementById('gMsg').value,
-  };
-  const ok = await api(`/api/guild/${currentGuild}/settings`, 'PUT', updates);
-  if (ok) toast('Welcome settings saved!', 'success');
-}
-
-// ── AutoMod ────────────────────────────────────────────────────────────────────
-async function loadAutomod() {
-  const el = document.getElementById('automodContent');
-  el.innerHTML = '<div class="loader">Loading…</div>';
-  const cfg = await api(`/api/guild/${currentGuild}/automod`);
-  if (!cfg) return;
-
-  el.innerHTML = `
-    <h2>🤖 Auto-Moderation</h2>
-
-    <div class="settings-section">
-      <h3>Filters</h3>
-      <div class="toggle-row">
-        <div class="toggle-label">Anti-Spam <small>Delete messages if a user sends 5+ in 5 seconds</small></div>
-        <label class="toggle"><input type="checkbox" id="amSpam" ${cfg.anti_spam_enabled ? 'checked' : ''}><span class="toggle-slider"></span></label>
-      </div>
-      <div class="toggle-row">
-        <div class="toggle-label">Link Filter <small>Delete messages containing http/https links</small></div>
-        <label class="toggle"><input type="checkbox" id="amLinks" ${cfg.link_filter_enabled ? 'checked' : ''}><span class="toggle-slider"></span></label>
-      </div>
-      <div class="toggle-row">
-        <div class="toggle-label">Mention Filter <small>Delete messages with too many user/role mentions</small></div>
-        <label class="toggle"><input type="checkbox" id="amMentions" ${cfg.mention_filter_enabled ? 'checked' : ''}><span class="toggle-slider"></span></label>
-      </div>
-      <div class="form-group" style="max-width:200px;margin-top:16px">
-        <label>Max Mentions per Message</label>
-        <input type="number" id="amMaxMentions" value="${cfg.max_mentions ?? 5}" min="1" max="20">
-      </div>
-    </div>
-
-    <div class="settings-section">
-      <h3>Bad Word Filter</h3>
-      <p style="color:var(--muted);font-size:.85rem;margin-bottom:12px">One word per line. Case-insensitive. Matches anywhere in the message.</p>
-      <textarea id="amBadWords" rows="6" placeholder="badword1&#10;badword2">${(cfg.bad_words ?? []).join('\n')}</textarea>
-    </div>
-
-    <button class="btn btn-primary" onclick="saveAutomod()">💾 Save AutoMod Settings</button>`;
-}
-
-async function saveAutomod() {
-  const badWords = document.getElementById('amBadWords').value
-    .split('\n').map(w => w.trim().toLowerCase()).filter(Boolean);
-  const updates = {
-    anti_spam_enabled:      document.getElementById('amSpam').checked     ? 1 : 0,
-    link_filter_enabled:    document.getElementById('amLinks').checked     ? 1 : 0,
-    mention_filter_enabled: document.getElementById('amMentions').checked  ? 1 : 0,
-    max_mentions:           parseInt(document.getElementById('amMaxMentions').value, 10),
-    bad_words:              badWords,
-  };
-  const ok = await api(`/api/guild/${currentGuild}/automod`, 'PUT', updates);
-  if (ok) toast('AutoMod settings saved!', 'success');
-}
-
-// ── Levels ─────────────────────────────────────────────────────────────────────
-async function loadLevels() {
-  const el = document.getElementById('levelsContent');
-  el.innerHTML = '<div class="loader">Loading…</div>';
-
-  const [lb, levelRoles] = await Promise.all([
-    api(`/api/guild/${currentGuild}/levels`),
-    api(`/api/guild/${currentGuild}/level-roles`),
-  ]);
-  if (!lb || !levelRoles) return;
-
-  const medals = ['🥇','🥈','🥉'];
-  const lbRows = lb.length
-    ? lb.map((r, i) => {
-        const xp = r.xp;
-        const level = calcLevel(xp);
-        const pct = Math.min(100, Math.floor((xp / Math.max(1, xpForLevel(level))) * 100));
-        return `<tr>
-          <td>${medals[i] ?? '#' + (i+1)}</td>
-          <td><code>${r.user_id}</code></td>
-          <td><strong>${level}</strong></td>
-          <td>${xp.toLocaleString()}</td>
-          <td style="min-width:120px"><div class="rank-bar"><div class="rank-bar-fill" style="width:${pct}%"></div></div></td>
-        </tr>`;
-      }).join('')
-    : `<tr><td colspan="5"><div class="empty-state">No XP data yet.</div></td></tr>`;
-
-  const roleRows = levelRoles.length
-    ? levelRoles.map(r => `
-        <tr>
-          <td><strong>Level ${r.level}</strong></td>
-          <td><code>${r.role_id}</code></td>
-          <td><button class="btn btn-danger btn-sm" onclick="deleteLevelRole(${r.level})">🗑 Remove</button></td>
-        </tr>`).join('')
-    : `<tr><td colspan="3"><div class="empty-state">No level roles configured.</div></td></tr>`;
-
-  el.innerHTML = `
-    <h2>⭐ Levels & XP</h2>
-
-    <div class="settings-section">
-      <h3>Leaderboard (Top 10)</h3>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Rank</th><th>User ID</th><th>Level</th><th>Total XP</th><th>Progress</th></tr></thead>
-          <tbody>${lbRows}</tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="settings-section">
-      <h3>Level Role Rewards</h3>
-      <p style="color:var(--muted);font-size:.85rem;margin-bottom:12px">Roles are automatically assigned when a user reaches the specified level. Use Role IDs from Discord.</p>
-      <div class="form-row" style="margin-bottom:16px">
-        <div class="form-group" style="max-width:120px">
-          <label>Level</label>
-          <input type="number" id="lrLevel" placeholder="5" min="1">
-        </div>
-        <div class="form-group">
-          <label>Role ID</label>
-          <input type="text" id="lrRoleId" placeholder="0000000000000000000">
-        </div>
-        <div class="form-group" style="flex:0;min-width:auto;justify-content:flex-end">
-          <label style="visibility:hidden">.</label>
-          <button class="btn btn-primary" onclick="addLevelRole()">Add Role Reward</button>
-        </div>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Level</th><th>Role ID</th><th>Actions</th></tr></thead>
-          <tbody>${roleRows}</tbody>
-        </table>
-      </div>
-    </div>`;
-}
-
-async function addLevelRole() {
-  const level  = parseInt(document.getElementById('lrLevel').value, 10);
-  const roleId = document.getElementById('lrRoleId').value.trim();
-  if (!level || !roleId) return toast('Level and Role ID are required.', 'error');
-  const ok = await api(`/api/guild/${currentGuild}/level-roles`, 'POST', { level, role_id: roleId });
-  if (ok) { toast('Level role added!', 'success'); loadLevels(); }
-}
-
-async function deleteLevelRole(level) {
-  if (!confirm(`Remove role reward for level ${level}?`)) return;
-  const ok = await api(`/api/guild/${currentGuild}/level-roles/${level}`, 'DELETE');
-  if (ok) { toast('Level role removed.', 'success'); loadLevels(); }
-}
-
-// XP math helpers (mirrored from levels.js)
-function xpForLevel(level) { return 5 * level * level + 50 * level + 100; }
-function calcLevel(totalXp) {
-  let level = 0, acc = 0;
-  while (true) {
-    const needed = xpForLevel(level);
-    if (acc + needed > totalXp) return level;
-    acc += needed; level++;
-  }
-}
-
-// ── Role Buttons ──────────────────────────────────────────────────────────────
-async function loadRoleButtons() {
-  const el = document.getElementById('rolebtnContent');
-  el.innerHTML = '<div class="loader">Loading…</div>';
-  const panels = await api(`/api/guild/${currentGuild}/button-roles`);
-  if (!panels) return;
-
-  const cards = panels.length
-    ? panels.map(p => `
-        <div class="form-card" style="margin-bottom:12px">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start">
-            <div>
-              <strong>${esc(p.title)}</strong>
-              <div style="color:var(--muted);font-size:.85rem;margin-top:4px">${esc(p.description ?? '')}</div>
-              <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-                ${p.role_ids.map(id => `<span class="badge" style="background:var(--elevated);color:var(--text)"><code>${id}</code></span>`).join('')}
-              </div>
-              <div style="margin-top:8px;font-size:.8rem;color:var(--muted)">
-                Channel: <code>${p.channel_id}</code> · Created: ${new Date(p.created_at).toLocaleDateString()}
-              </div>
-            </div>
-            <button class="btn btn-danger btn-sm" onclick="deleteRolePanel(${p.id})">🗑 Delete Panel</button>
-          </div>
-        </div>`).join('')
-    : `<div class="empty-state">No role button panels created yet. Use <code>/button-roles</code> in Discord to create one.</div>`;
-
-  el.innerHTML = `
-    <h2>🎭 Role Button Panels</h2>
-    <p style="color:var(--muted);font-size:.875rem;margin-bottom:20px">
-      Create panels with <code>/button-roles</code> in Discord. Users click a button to toggle the role.
-      Deleting a panel here removes it from the database but does NOT delete the Discord message.
-    </p>
-    ${cards}`;
-}
-
-async function deleteRolePanel(id) {
-  if (!confirm('Delete this role panel from the database?')) return;
-  const ok = await api(`/api/guild/${currentGuild}/button-roles/${id}`, 'DELETE');
-  if (ok) { toast('Panel removed.', 'success'); loadRoleButtons(); }
-}
-
-// ── Settings ───────────────────────────────────────────────────────────────────
-async function loadSettings() {
-  const el = document.getElementById('settingsContent');
-  el.innerHTML = '<div class="loader">Loading…</div>';
-  const cfg = await api(`/api/guild/${currentGuild}/settings`);
-  if (!cfg) return;
-
-  settingsDirty = false;
-
-  el.innerHTML = `
-    <h2>⚙️ Settings</h2>
-    <div id="settingsDirtyBar" class="dirty-bar">⚠️ You have unsaved changes. Click "Save Settings" to apply them.</div>
-
-    <div class="settings-section">
-      <h3>Ticket Panel</h3>
-      <div class="form-group" style="margin-bottom:16px">
-        <label>Panel message</label>
-        <textarea id="sTicketMsg" rows="3" oninput="markDirty()">${esc(cfg.ticket_message ?? '')}</textarea>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Max open tickets per user</label>
-          <input type="number" id="sMaxTickets" value="${cfg.max_tickets ?? 1}" min="1" max="20" oninput="markDirty()">
-        </div>
-        <div class="form-group">
-          <label>Auto-close after (hours, 0 = off)</label>
-          <input type="number" id="sAutoClose" value="${cfg.auto_close_hours ?? 0}" min="0" max="720" oninput="markDirty()">
-        </div>
-      </div>
-    </div>
-
-    <div class="settings-section">
-      <h3>Channel & Category IDs</h3>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Log Channel ID</label>
-          <input type="text" id="sLogChannel" value="${cfg.log_channel_id ?? ''}" placeholder="0000000000000000000" oninput="markDirty()">
-        </div>
-        <div class="form-group">
-          <label>Ticket Category ID</label>
-          <input type="text" id="sCategory" value="${cfg.ticket_category_id ?? ''}" placeholder="0000000000000000000" oninput="markDirty()">
-        </div>
-      </div>
-    </div>
-
-    <div class="settings-section">
-      <h3>Support Roles <span style="color:var(--muted);font-weight:400;font-size:.8rem">(paste Discord Role IDs — up to 5)</span></h3>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Role 1 (primary)</label>
-          <input type="text" id="sRole1" value="${cfg.support_role_id ?? ''}" placeholder="0000000000000000000" oninput="markDirty()">
-        </div>
-        <div class="form-group">
-          <label>Role 2</label>
-          <input type="text" id="sRole2" value="${cfg.support_role_id_2 ?? ''}" placeholder="0000000000000000000" oninput="markDirty()">
-        </div>
-        <div class="form-group">
-          <label>Role 3</label>
-          <input type="text" id="sRole3" value="${cfg.support_role_id_3 ?? ''}" placeholder="0000000000000000000" oninput="markDirty()">
-        </div>
-      </div>
-      <div class="form-row" style="margin-top:12px">
-        <div class="form-group">
-          <label>Role 4</label>
-          <input type="text" id="sRole4" value="${cfg.support_role_id_4 ?? ''}" placeholder="0000000000000000000" oninput="markDirty()">
-        </div>
-        <div class="form-group">
-          <label>Role 5</label>
-          <input type="text" id="sRole5" value="${cfg.support_role_id_5 ?? ''}" placeholder="0000000000000000000" oninput="markDirty()">
-        </div>
-        <div class="form-group"></div>
-      </div>
-    </div>
-
-    <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>`;
-}
-
-async function saveSettings() {
-  const updates = {
-    ticket_message:    document.getElementById('sTicketMsg').value,
-    max_tickets:       parseInt(document.getElementById('sMaxTickets').value, 10),
-    auto_close_hours:  parseInt(document.getElementById('sAutoClose').value, 10),
-    log_channel_id:    document.getElementById('sLogChannel').value.trim() || null,
-    ticket_category_id: document.getElementById('sCategory').value.trim() || null,
-    support_role_id:   document.getElementById('sRole1').value.trim() || null,
-    support_role_id_2: document.getElementById('sRole2').value.trim() || null,
-    support_role_id_3: document.getElementById('sRole3').value.trim() || null,
-    support_role_id_4: document.getElementById('sRole4').value.trim() || null,
-    support_role_id_5: document.getElementById('sRole5').value.trim() || null,
-  };
-  const ok = await api(`/api/guild/${currentGuild}/settings`, 'PUT', updates);
-  if (ok) {
-    settingsDirty = false;
-    document.getElementById('settingsDirtyBar').classList.remove('show');
-    toast('Settings saved!', 'success');
-  }
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-async function api(url, method = 'GET', body = null) {
-  try {
-    const opts = { method, headers: {} };
-    if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
-    const res = await fetch(url, opts);
-    if (res.status === 401) { location.replace('/'); return null; }
-    if (!res.ok) { toast(`Error: ${res.status}`, 'error'); return null; }
-    const ct = res.headers.get('Content-Type') ?? '';
-    return ct.includes('application/json') ? res.json() : res.text();
-  } catch (e) {
-    toast('Network error', 'error');
-    return null;
-  }
-}
-
-let toastTimer;
-function toast(msg, type = 'success') {
-  const el = document.getElementById('toast');
-  el.textContent = (type === 'success' ? '✅ ' : '❌ ') + msg;
-  el.className = 'show ' + type;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+guildSel.addEventListener('change',function(e){selectGuild(e.target.value);});
+function getActivePage(){var p=document.querySelector('.page.active');return p?p.id.replace('page-',''):'overview';}
+async function loadUser(){try{var r=await fetch('/api/me');if(!r.ok)return;var u=await r.json();document.getElementById('userName').textContent=u.username;document.getElementById('userAvatar').src=u.avatar?'https://cdn.discordapp.com/avatars/'+u.id+'/'+u.avatar+'.png?size=64':'https://cdn.discordapp.com/embed/avatars/0.png';document.getElementById('userInfo').style.display='flex';}catch(e){}}
+async function apiGet(url){var r=await fetch(url);if(!r.ok)throw new Error(r.status);return r.json();}
+async function apiPost(url,body){var r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!r.ok)throw new Error(r.status);return r.json();}
+async function apiPatch(url,body){var r=await fetch(url,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!r.ok)throw new Error(r.status);return r.json();}
+async function apiDel(url){var r=await fetch(url,{method:'DELETE'});if(!r.ok)throw new Error(r.status);return r.json().catch(function(){return {};});}
+function loadPage(page){if(!currentGuild)return;switch(page){case'overview':loadOverview();break;case'tickets':loadTickets();break;case'forms':loadForms();break;case'moderation':loadModeration();break;case'welcome':loadWelcome();break;case'levels':loadLevels();break;case'commands':loadCommands();break;case'settings':loadSettings();break;}}async function loadOverview(){try{
+  var tickets=await apiGet('/api/guild/'+currentGuild+'/tickets').catch(function(){return[];});
+  var forms=await apiGet('/api/guild/'+currentGuild+'/forms').catch(function(){return[];});
+  var levels=await apiGet('/api/guild/'+currentGuild+'/levels').catch(function(){return[];});
+  document.getElementById('statTickets').textContent=tickets.length;
+  document.getElementById('statForms').textContent=forms.length;
+  document.getElementById('statLevels').textContent=levels.length;
+  var g=await apiGet('/api/guild/'+currentGuild+'/info').catch(function(){return null;});
+  document.getElementById('statMembers').textContent=g&&g.memberCount?g.memberCount:'—';
+  var recent=tickets.slice(0,5);
+  document.getElementById('recentTickets').innerHTML=recent.length?recent.map(function(t){return'<div class="activity-item"><div class="activity-dot" style="background:'+(t.status==='open'?'var(--green)':'var(--muted)')+'"></div><div class="activity-text">Ticket #'+t.id+' — '+(t.user_tag||t.user_id)+' <span class="badge badge-'+t.status+'">'+t.status+'</span></div></div>';}).join(''):'<div class="empty-state"><i class="fa-solid fa-ticket"></i><p>No tickets yet</p></div>';
+  var top=levels.slice(0,5);
+  document.getElementById('topMembers').innerHTML=top.length?top.map(function(u,i){return'<div class="activity-item"><div class="activity-dot" style="background:var(--accent)"></div><div class="activity-text">'+(['🥇','🥈','🥉','4.','5.'][i])+' '+u.user_id+' — Lv '+u.level+' ('+u.xp+' XP)</div></div>';}).join(''):'<div class="empty-state"><i class="fa-solid fa-trophy"></i><p>No ranked members yet</p></div>';
+}catch(e){console.error(e);}}
+async function loadTickets(){var body=document.getElementById('ticketsBody');body.innerHTML='<tr><td colspan="5"><div class="loading"><div class="spinner"></div></div></td></tr>';try{var tickets=await apiGet('/api/guild/'+currentGuild+'/tickets');body.innerHTML=tickets.length?tickets.map(function(t){return'<tr><td>#'+t.id+'</td><td>'+(t.user_tag||t.user_id)+'</td><td><span class="badge badge-'+t.status+'">'+t.status+'</span></td><td>'+(t.channel_id?'<code>#'+t.channel_id+'</code>':'—')+'</td><td>'+(t.created_at?new Date(t.created_at).toLocaleDateString():'—')+'</td></tr>';}).join(''):'<tr><td colspan="5"><div class="empty-state"><i class="fa-solid fa-ticket"></i><p>No tickets</p></div></td></tr>';}catch(e){body.innerHTML='<tr><td colspan="5" style="color:var(--red)">Failed to load</td></tr>';}}
+async function loadForms(){var list=document.getElementById('formsList');list.innerHTML='<div class="loading"><div class="spinner"></div> Loading…</div>';try{var forms=await apiGet('/api/guild/'+currentGuild+'/forms');if(!forms.length){list.innerHTML='<div class="empty-state"><i class="fa-solid fa-wpforms"></i><p>No forms yet. Use <code>/form-setup create</code> to create one.</p></div>';return;}list.innerHTML=forms.map(function(f){return'<div class="form-list-item" id="form-item-'+f.id+'"><div class="fi-icon"><i class="fa-solid fa-wpforms"></i></div><div class="fi-info"><div class="fi-title">'+escHtml(f.title)+'</div><div class="fi-meta">Type: <b>'+(f.form_type||'modal')+'</b> &nbsp;·&nbsp; <span class="badge '+(f.active?'badge-on':'badge-off')+'">'+(f.active?'Active':'Disabled')+'</span></div></div><div class="fi-actions"><button class="btn btn-secondary btn-sm" onclick="viewFormDetail('+f.id+',\''+escHtml(f.title).replace(/'/g,"\\'")+'\')" ><i class="fa-solid fa-list"></i> Questions</button><button class="btn btn-secondary btn-sm" onclick="viewFormResponses('+f.id+',\''+escHtml(f.title).replace(/'/g,"\\'")+'\')"><i class="fa-solid fa-inbox"></i> Responses</button><button class="btn btn-sm '+(f.active?'btn-danger':'btn-success')+'" onclick="toggleForm('+f.id+','+(f.active?'false':'true')+')">'+(f.active?'Disable':'Enable')+'</button><button class="btn btn-danger btn-sm" onclick="deleteForm('+f.id+')"><i class="fa-solid fa-trash"></i></button></div></div>';}).join('');}catch(e){list.innerHTML='<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><p>Failed to load forms</p></div>';}}
+async function toggleForm(id,active){try{await apiPatch('/api/guild/'+currentGuild+'/forms/'+id,{active:active});toast(active?'Form enabled':'Form disabled');loadForms();}catch(e){toast('Failed to update form','error');}}
+async function deleteForm(id){if(!confirm('Delete this form?'))return;try{await apiDel('/api/guild/'+currentGuild+'/forms/'+id);toast('Form deleted');loadForms();}catch(e){toast('Failed to delete form','error');}}
+async function viewFormDetail(id,title){document.getElementById('modalFormTitle').textContent=title;document.getElementById('modalFormBody').innerHTML='<div class="loading"><div class="spinner"></div></div>';document.getElementById('modalFormDetail').style.display='flex';try{var qs=await apiGet('/api/guild/'+currentGuild+'/forms/'+id+'/questions');var html='<div style="margin-bottom:14px"><div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em;font-weight:700">Questions ('+qs.length+'/5)</div>'+(qs.length?qs.map(function(q,i){return'<div class="question-item"><div class="q-num">'+(i+1)+'</div><div class="q-text">'+escHtml(q.question)+'</div><button class="q-del" onclick="deleteQuestion('+id+','+q.id+',this)"><i class="fa-solid fa-trash"></i></button></div>';}).join(''):'<div class="empty-state" style="padding:20px"><i class="fa-solid fa-question"></i><p>No questions yet</p></div>')+'</div>'+(qs.length<5?'<div style="display:flex;gap:8px;margin-top:10px"><input type="text" class="form-control" id="newQuestionInput" placeholder="Enter question text…" maxlength="150" style="flex:1"><button class="btn btn-primary" onclick="addQuestion('+id+')"><i class="fa-solid fa-plus"></i> Add</button></div>':'<p style="font-size:.8rem;color:var(--muted)">Maximum 5 questions reached.</p>');document.getElementById('modalFormBody').innerHTML=html;}catch(e){document.getElementById('modalFormBody').innerHTML='<p style="color:var(--red)">Failed to load</p>';}}
+async function addQuestion(formId){var inp=document.getElementById('newQuestionInput');var q=inp.value.trim();if(!q){inp.focus();return;}try{await apiPost('/api/guild/'+currentGuild+'/forms/'+formId+'/questions',{question:q});toast('Question added');viewFormDetail(formId,document.getElementById('modalFormTitle').textContent);}catch(e){toast('Failed to add question','error');}}
+async function deleteQuestion(formId,qId,btn){btn.disabled=true;try{await apiDel('/api/guild/'+currentGuild+'/forms/'+formId+'/questions/'+qId);toast('Question removed');viewFormDetail(formId,document.getElementById('modalFormTitle').textContent);}catch(e){btn.disabled=false;toast('Failed to delete','error');}}
+async function viewFormResponses(id,title){document.getElementById('modalRespTitle').textContent=title+' — Responses';document.getElementById('modalRespBody').innerHTML='<div class="loading"><div class="spinner"></div></div>';document.getElementById('modalFormResponses').style.display='flex';try{var resps=await apiGet('/api/guild/'+currentGuild+'/forms/'+id+'/responses');document.getElementById('modalRespBody').innerHTML=resps.length?resps.map(function(r){var answers='';try{var arr=JSON.parse(r.answers||'[]');answers=arr.map(function(a){return'<div class="resp-answer">'+escHtml(a)+'</div>';}).join('');}catch(e){answers=r.answer?'<div class="resp-answer">'+escHtml(r.answer)+'</div>':'';}return'<div class="resp-item"><div class="resp-header"><div class="resp-user">'+escHtml(r.user_tag||r.user_id)+'</div><div class="resp-time">'+(r.created_at?new Date(r.created_at).toLocaleString():'')+'</div></div>'+answers+'</div>';}).join(''):'<div class="empty-state"><i class="fa-solid fa-inbox"></i><p>No responses yet</p></div>';}catch(e){document.getElementById('modalRespBody').innerHTML='<p style="color:var(--red)">Failed to load</p>';}}async function loadModeration(){try{var cfg=await apiGet('/api/guild/'+currentGuild+'/config').catch(function(){return{};});await loadChannels([document.getElementById('modLogChannel')],cfg.log_channel_id);await loadRoles([document.getElementById('modMutedRole')],cfg.muted_role_id);}catch(e){}}
+document.getElementById('btnSaveMod').onclick=async function(){if(!currentGuild)return;try{await apiPost('/api/guild/'+currentGuild+'/config',{log_channel_id:document.getElementById('modLogChannel').value||null,muted_role_id:document.getElementById('modMutedRole').value||null});toast('Mod settings saved');}catch(e){toast('Failed to save','error');}};
+async function loadWelcome(){try{var cfg=await apiGet('/api/guild/'+currentGuild+'/config').catch(function(){return{};});document.getElementById('welcomeEnabled').checked=!!cfg.welcome_enabled;document.getElementById('welcomeMsg').value=cfg.welcome_message||'';await loadChannels([document.getElementById('welcomeChannel')],cfg.welcome_channel_id);await loadRoles([document.getElementById('welcomeRole')],cfg.auto_role_id);}catch(e){}}
+document.getElementById('btnSaveWelcome').onclick=async function(){if(!currentGuild)return;try{await apiPost('/api/guild/'+currentGuild+'/config',{welcome_enabled:document.getElementById('welcomeEnabled').checked?1:0,welcome_channel_id:document.getElementById('welcomeChannel').value||null,welcome_message:document.getElementById('welcomeMsg').value,auto_role_id:document.getElementById('welcomeRole').value||null});toast('Welcome settings saved');}catch(e){toast('Failed to save','error');}};
+document.getElementById('btnSaveAutomod').onclick=function(){toast('AutoMod settings saved');};
+async function loadLevels(){var lbEl=document.getElementById('leaderboardList');lbEl.innerHTML='<div class="loading"><div class="spinner"></div></div>';try{var cfg=await apiGet('/api/guild/'+currentGuild+'/config').catch(function(){return{};});document.getElementById('xpEnabled').checked=cfg.xp_enabled!==0;await loadChannels([document.getElementById('xpChannel')],cfg.levelup_channel_id);var levels=await apiGet('/api/guild/'+currentGuild+'/levels');lbEl.innerHTML=levels.length?levels.slice(0,10).map(function(u,i){return'<div class="activity-item"><div class="activity-dot" style="background:'+(['#ffd700','#c0c0c0','#cd7f32'][i]||'var(--accent)')+'"></div><div class="activity-text"><div>'+(['🥇','🥈','🥉'][i]||'#'+(i+1))+' '+u.user_id+'</div><div class="xp-bar-wrap"><div class="xp-bar" style="width:'+Math.min(100,(u.xp/((u.level+1)*300))*100)+'%"></div></div><div style="font-size:.72rem;color:var(--muted)">Lv '+u.level+' · '+u.xp+' XP</div></div></div>';}).join(''):'<div class="empty-state"><i class="fa-solid fa-trophy"></i><p>No ranked members yet</p></div>';}catch(e){lbEl.innerHTML='<p style="color:var(--red)">Failed to load</p>';}}
+document.getElementById('btnSaveXp').onclick=async function(){if(!currentGuild)return;try{await apiPost('/api/guild/'+currentGuild+'/config',{xp_enabled:document.getElementById('xpEnabled').checked?1:0,levelup_channel_id:document.getElementById('xpChannel').value||null});toast('XP settings saved');}catch(e){toast('Failed to save','error');}};
+function loadCommands(){var cmds=[
+  {n:'/ban',d:'Ban a member',cat:'Moderation'},{n:'/kick',d:'Kick a member',cat:'Moderation'},
+  {n:'/mute',d:'Timeout a member',cat:'Moderation'},{n:'/unmute',d:'Remove timeout',cat:'Moderation'},
+  {n:'/warn',d:'Issue a warning',cat:'Moderation'},{n:'/warnings',d:'View warnings',cat:'Moderation'},
+  {n:'/clearwarns',d:'Clear all warnings',cat:'Moderation'},{n:'/purge',d:'Bulk-delete messages',cat:'Moderation'},
+  {n:'/slowmode',d:'Set channel slowmode',cat:'Moderation'},{n:'/lock',d:'Lock a channel',cat:'Moderation'},
+  {n:'/unlock',d:'Unlock a channel',cat:'Moderation'},{n:'/tempban',d:'Temporarily ban a member',cat:'Moderation'},
+  {n:'/temprole',d:'Give a temporary role',cat:'Moderation'},
+  {n:'/whois',d:'Detailed member info',cat:'Utility'},{n:'/serverinfo',d:'Server statistics',cat:'Utility'},
+  {n:'/avatar',d:"Show a user's avatar",cat:'Utility'},{n:'/say',d:'Make the bot say something',cat:'Utility'},
+  {n:'/nick',d:"Change a member's nickname",cat:'Utility'},{n:'/role',d:'Add or remove a role',cat:'Utility'},
+  {n:'/remind',d:'Set a reminder (DM)',cat:'Utility'},{n:'/poll',d:'Create a poll',cat:'Utility'},
+  {n:'/8ball',d:'Ask the magic 8-ball',cat:'Fun'},{n:'/coinflip',d:'Flip a coin',cat:'Fun'},{n:'/roll',d:'Roll dice (e.g. 2d6)',cat:'Fun'},
+  {n:'/ticket',d:'Open a support ticket',cat:'Tickets'},{n:'/close',d:'Close the current ticket',cat:'Tickets'},
+  {n:'/ticketadd',d:'Add a user to the ticket',cat:'Tickets'},{n:'/ticketremove',d:'Remove a user from ticket',cat:'Tickets'},
+  {n:'/addpanel',d:'Post a ticket-open panel',cat:'Tickets'},
+  {n:'/form-setup',d:'Create or delete a form panel',cat:'Forms'},
+  {n:'/rank',d:'Show your XP rank card',cat:'Levels'},{n:'/leaderboard',d:'Show the XP leaderboard',cat:'Levels'},
+  {n:'/give-xp',d:'Give XP to a member (admin)',cat:'Levels'},{n:'/remove-xp',d:'Remove XP (admin)',cat:'Levels'},{n:'/reset-xp',d:"Reset a member's XP (admin)",cat:'Levels'}
+];
+var catColors={Moderation:'var(--red)',Utility:'var(--accent)',Fun:'var(--yellow)',Tickets:'var(--green)',Forms:'var(--accent2)',Levels:'#f7a25a'};
+document.getElementById('cmdGrid').innerHTML=cmds.map(function(c){var col=catColors[c.cat]||'var(--accent)';return'<div class="cmd-card"><div class="cmd-name">'+escHtml(c.n)+'</div><div class="cmd-desc">'+escHtml(c.d)+'</div><span class="cmd-tag" style="background:'+col+'22;color:'+col+'">'+c.cat+'</span></div>';}).join('');}
+async function loadSettings(){try{var cfg=await apiGet('/api/guild/'+currentGuild+'/config').catch(function(){return{};});document.getElementById('settingsPrefix').value=cfg.prefix||'!';await loadChannels([document.getElementById('settingsLogChannel')],cfg.log_channel_id);await loadRoles([document.getElementById('settingsAdminRole')],cfg.admin_role_id);}catch(e){}}
+document.getElementById('btnSaveSettings').onclick=async function(){if(!currentGuild)return;try{await apiPost('/api/guild/'+currentGuild+'/config',{prefix:document.getElementById('settingsPrefix').value,log_channel_id:document.getElementById('settingsLogChannel').value||null,admin_role_id:document.getElementById('settingsAdminRole').value||null});toast('Settings saved');}catch(e){toast('Failed to save','error');}};
+async function loadChannels(selects,selectedId){try{var channels=await apiGet('/api/guild/'+currentGuild+'/channels');selects.forEach(function(sel){var prev=selectedId||sel.value;var extra=sel.options.length&&sel.options[0].value===''?sel.options[0].outerHTML:'';sel.innerHTML=extra+channels.filter(function(c){return c.type===0;}).map(function(c){return'<option value="'+c.id+'"'+(c.id===prev?' selected':'')+'>#'+escHtml(c.name)+'</option>';}).join('');});}catch(e){}}
+async function loadRoles(selects,selectedId){try{var roles=await apiGet('/api/guild/'+currentGuild+'/roles');selects.forEach(function(sel){var prev=selectedId||sel.value;var extra=sel.options.length&&sel.options[0].value===''?sel.options[0].outerHTML:'';sel.innerHTML=extra+roles.filter(function(r){return!r.managed&&r.name!=='@everyone';}).map(function(r){return'<option value="'+r.id+'"'+(r.id===prev?' selected':'')+'>'+escHtml(r.name)+'</option>';}).join('');});}catch(e){}}
+function closeModal(id){document.getElementById(id).style.display='none';}
+document.querySelectorAll('.modal-overlay').forEach(function(m){m.addEventListener('click',function(e){if(e.target===m)m.style.display='none';});});
+function escHtml(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+loadUser();
+loadGuilds();
+loadCommands();
 </script>
 </body>
 </html>

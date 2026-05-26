@@ -71,6 +71,16 @@ client.once(Events.ClientReady, async c => {
         }
       }
     }
+    // Expire temp roles
+    const expired = db.getExpiredTempRoles();
+    for (const tr of expired) {
+      const g = client.guilds.cache.get(tr.guild_id);
+      if (g) {
+        const member = await g.members.fetch(tr.user_id).catch(() => null);
+        if (member) await member.roles.remove(tr.role_id).catch(() => {});
+      }
+      db.deleteTempRole(tr.id);
+    }
   }, 3_600_000);
 });
 

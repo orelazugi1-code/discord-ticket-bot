@@ -272,6 +272,39 @@ app.delete('/api/guild/:guildId/slash-commands/:commandId', requireAuth, require
   }
 });
 
+// ── Forms ─────────────────────────────────────────────────────────────────────
+
+app.get('/api/guild/:guildId/forms', requireAuth, requireGuildAccess, (req, res) => {
+  res.json(db.getForms(req.params.guildId));
+});
+
+app.post('/api/guild/:guildId/forms/:formId/questions', requireAuth, requireGuildAccess, (req, res) => {
+  const { question, position } = req.body;
+  if (!question?.trim()) return res.status(400).json({ error: 'question required' });
+  db.addFormQuestion(parseInt(req.params.formId), question.trim(), position || 0);
+  res.json({ success: true });
+});
+
+app.delete('/api/guild/:guildId/forms/:formId/questions/:qId', requireAuth, requireGuildAccess, (req, res) => {
+  db.deleteFormQuestion(parseInt(req.params.qId));
+  res.json({ success: true });
+});
+
+app.get('/api/guild/:guildId/forms/:formId/responses', requireAuth, requireGuildAccess, (req, res) => {
+  res.json(db.getFormResponses(parseInt(req.params.formId)));
+});
+
+app.patch('/api/guild/:guildId/forms/:formId', requireAuth, requireGuildAccess, (req, res) => {
+  const { active } = req.body;
+  db.setFormActive(parseInt(req.params.formId), active);
+  res.json({ success: true });
+});
+
+app.delete('/api/guild/:guildId/forms/:formId', requireAuth, requireGuildAccess, (req, res) => {
+  db.deleteForm(parseInt(req.params.formId));
+  res.json({ success: true });
+});
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => console.log(`✅ Dashboard → http://localhost:${PORT}`));

@@ -3,3 +3,4 @@ node_modules/
 data/
 transcripts/
 *.db
+.env.txt

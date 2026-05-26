@@ -8,6 +8,44 @@ const {
 } = require('discord.js');
 
 async function handleModal(interaction, db) {
+  // ── Form submission ─────────────────────────────────────────────────────────
+  if (interaction.customId.startsWith('form_submit:')) {
+    const formId = parseInt(interaction.customId.split(':')[1]);
+    const form   = db.getForm(formId);
+    if (!form) return interaction.reply({ content: '❌ Form not found.', ephemeral: true });
+
+    const answers = {};
+    for (const [key, component] of interaction.fields.fields) {
+      answers[key] = component.value;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+    const { handleButton } = require('./buttonHandler');
+    // reuse handleFormResult logic via a direct call
+    const { user, guild } = interaction;
+    if (form.log_channel_id) {
+      const logCh = guild.channels.cache.get(form.log_channel_id);
+      if (logCh) {
+        const { EmbedBuilder } = require('discord.js');
+        const embed = new EmbedBuilder()
+          .setTitle(`📋 Form Response: ${form.title}`)
+          .setColor(0x5865f2)
+          .addFields({ name: 'User', value: `<@${user.id}> (${user.tag})`, inline: true })
+          .setTimestamp();
+        const questions = db.getFormQuestions(formId);
+        for (const q of questions) {
+          const val = answers[`q${q.id}`] || answers[q.id] || '';
+          if (val) embed.addFields({ name: q.question.substring(0,256), value: String(val).substring(0,1024) });
+        }
+        await logCh.send({ embeds: [embed] }).catch(() => {});
+      }
+    }
+    db.saveFormResponse(form.id, user.id, guild.id, answers);
+    if (form.role_id) await interaction.member.roles.add(form.role_id).catch(() => {});
+    await interaction.editReply({ content: form.accept_message || '✅ Your response has been submitted!' });
+    return;
+  }
+
   if (interaction.customId !== 'ticket:create') return;
 
   await interaction.deferReply({ ephemeral: true });
