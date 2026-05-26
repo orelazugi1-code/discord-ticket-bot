@@ -3,120 +3,345 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Discord Bot — Login</title>
+<title>Bot Dashboard — Login</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: radial-gradient(ellipse at top, #1a1f2e 0%, #0d1117 70%);
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #dcddde;
-  }
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: #05050f;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
 
-  .card {
-    background: #1e2130;
-    border: 1px solid #2d3148;
-    border-radius: 16px;
-    padding: 48px 40px;
-    max-width: 420px;
-    width: 90%;
-    text-align: center;
-    box-shadow: 0 24px 64px rgba(0,0,0,.5);
-  }
+/* ── Animated background orbs ── */
+.bg-orb {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(90px);
+  pointer-events: none;
+  z-index: 0;
+  will-change: transform;
+}
+.orb-1 {
+  width: 700px; height: 700px;
+  background: radial-gradient(circle, rgba(124,90,247,.22) 0%, transparent 70%);
+  top: -220px; left: -140px;
+  animation: drift1 14s ease-in-out infinite;
+}
+.orb-2 {
+  width: 550px; height: 550px;
+  background: radial-gradient(circle, rgba(88,101,242,.18) 0%, transparent 70%);
+  bottom: -180px; right: -100px;
+  animation: drift2 18s ease-in-out infinite;
+}
+.orb-3 {
+  width: 420px; height: 420px;
+  background: radial-gradient(circle, rgba(247,90,139,.12) 0%, transparent 70%);
+  top: 45%; left: 55%;
+  animation: drift3 20s ease-in-out infinite;
+}
+.orb-4 {
+  width: 300px; height: 300px;
+  background: radial-gradient(circle, rgba(61,220,132,.1) 0%, transparent 70%);
+  top: 20%; right: 15%;
+  animation: drift1 16s ease-in-out infinite reverse;
+}
 
-  .logo {
-    width: 72px;
-    height: 72px;
-    background: #5865f2;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 24px;
-    font-size: 2rem;
-  }
+@keyframes drift1 {
+  0%,100% { transform: translate(0,0) scale(1); }
+  33%      { transform: translate(40px,-30px) scale(1.06); }
+  66%      { transform: translate(-25px,40px) scale(.94); }
+}
+@keyframes drift2 {
+  0%,100% { transform: translate(0,0) scale(1); }
+  33%      { transform: translate(-50px,25px) scale(1.08); }
+  66%      { transform: translate(30px,-40px) scale(.93); }
+}
+@keyframes drift3 {
+  0%,100% { transform: translate(-50%,-50%) scale(1); }
+  40%      { transform: translate(calc(-50% + 60px), calc(-50% - 40px)) scale(1.1); }
+  80%      { transform: translate(calc(-50% - 40px), calc(-50% + 50px)) scale(.92); }
+}
 
-  h1 { font-size: 1.6rem; color: #fff; margin-bottom: 8px; }
-  p  { color: #8e9297; font-size: .95rem; line-height: 1.5; margin-bottom: 32px; }
+/* ── Grid overlay ── */
+.bg-grid {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(124,90,247,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124,90,247,.05) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 0;
+  mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%);
+}
 
-  .btn-discord {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    background: #5865f2;
-    color: #fff;
-    text-decoration: none;
-    padding: 14px 28px;
-    border-radius: 8px;
-    font-size: 1rem;
-    font-weight: 600;
-    transition: background .2s, transform .1s;
-    width: 100%;
-    justify-content: center;
-  }
-  .btn-discord:hover   { background: #4752c4; transform: translateY(-1px); }
-  .btn-discord:active  { transform: translateY(0); }
-  .btn-discord svg     { width: 22px; height: 22px; fill: currentColor; flex-shrink: 0; }
+/* ── Vignette ── */
+.bg-vignette {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse 100% 100% at 50% 50%, transparent 40%, rgba(5,5,15,.8) 100%);
+  pointer-events: none;
+  z-index: 0;
+}
 
-  .error-banner {
-    background: #3d1515;
-    border: 1px solid #ed4245;
-    border-radius: 8px;
-    padding: 10px 14px;
-    font-size: .875rem;
-    color: #ed4245;
-    margin-bottom: 20px;
-    display: none;
-  }
+/* ── Card ── */
+.card {
+  position: relative;
+  z-index: 1;
+  background: rgba(8, 8, 20, 0.78);
+  backdrop-filter: blur(28px) saturate(1.4);
+  -webkit-backdrop-filter: blur(28px) saturate(1.4);
+  border: 1px solid rgba(124,90,247,.18);
+  border-radius: 28px;
+  padding: 52px 44px 44px;
+  max-width: 448px;
+  width: 92%;
+  text-align: center;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.04) inset,
+    0 0 100px rgba(124,90,247,.1),
+    0 40px 80px rgba(0,0,0,.65);
+  animation: fadeUp .65s cubic-bezier(.16,1,.3,1) both;
+}
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(30px) scale(.96); }
+  to   { opacity:1; transform:translateY(0) scale(1); }
+}
 
-  .features {
-    margin-top: 28px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    text-align: left;
-  }
-  .feature {
-    background: #252840;
-    border-radius: 8px;
-    padding: 12px;
-    font-size: .8rem;
-    color: #8e9297;
-  }
-  .feature span { display: block; color: #dcddde; font-weight: 600; margin-bottom: 2px; }
+/* Card top glow line */
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 20%; right: 20%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(124,90,247,.6), rgba(247,90,139,.4), transparent);
+  border-radius: 1px;
+}
 
+/* ── Logo ── */
+.logo-wrap {
+  position: relative;
+  width: 92px; height: 92px;
+  margin: 0 auto 32px;
+}
+.logo-pulse {
+  position: absolute;
+  inset: -16px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(124,90,247,.18) 0%, transparent 70%);
+  animation: lpulse 3s ease-in-out infinite;
+}
+@keyframes lpulse {
+  0%,100% { opacity:.5; transform:scale(.9); }
+  50%      { opacity:1;  transform:scale(1.1); }
+}
+.logo-ring {
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 1.5px solid transparent;
+  background: linear-gradient(#080814, #080814) padding-box,
+              linear-gradient(135deg, rgba(124,90,247,.7), rgba(247,90,139,.5), rgba(88,101,242,.6)) border-box;
+  animation: lrotate 6s linear infinite;
+}
+@keyframes lrotate { to { transform: rotate(360deg); } }
+.logo {
+  position: relative;
+  width: 92px; height: 92px;
+  background: linear-gradient(135deg, #7c5af7 0%, #5865f2 60%, #a855f7 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.3rem;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.1) inset,
+    0 0 40px rgba(124,90,247,.55),
+    0 8px 32px rgba(0,0,0,.6);
+}
 
-  .btn-invite {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    background: transparent;
-    color: #8e9297;
-    text-decoration: none;
-    padding: 12px 28px;
-    border-radius: 8px;
-    font-size: .95rem;
-    font-weight: 600;
-    border: 1px solid #2d3148;
-    transition: background .2s, color .2s, border-color .2s, transform .1s;
-    width: 100%;
-    justify-content: center;
-    margin-top: 10px;
-  }
-  .btn-invite:hover  { background: #252840; color: #dcddde; border-color: #5865f2; transform: translateY(-1px); }
-  .btn-invite:active { transform: translateY(0); }
-  footer { margin-top: 28px; color: #4f545c; font-size: .8rem; }
+/* ── Typography ── */
+.title {
+  font-size: 2rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #ffffff 20%, rgba(180,155,255,.85) 60%, rgba(247,90,139,.7) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -.03em;
+  line-height: 1.15;
+  margin-bottom: 10px;
+}
+.subtitle {
+  color: rgba(160,155,200,.55);
+  font-size: .9rem;
+  line-height: 1.6;
+  margin-bottom: 36px;
+  font-weight: 400;
+}
+
+/* ── Error ── */
+.error-banner {
+  background: rgba(247,90,90,.08);
+  border: 1px solid rgba(247,90,90,.25);
+  border-radius: 10px;
+  padding: 11px 14px;
+  font-size: .85rem;
+  color: #f77a7a;
+  margin-bottom: 20px;
+  display: none;
+  text-align: left;
+}
+
+/* ── Discord button ── */
+.btn-discord {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  background: linear-gradient(135deg, #5865f2 0%, #4752c4 100%);
+  color: #fff;
+  text-decoration: none;
+  padding: 16px 28px;
+  border-radius: 14px;
+  font-size: .97rem;
+  font-weight: 700;
+  letter-spacing: .01em;
+  position: relative;
+  overflow: hidden;
+  transition: transform .25s cubic-bezier(.16,1,.3,1), box-shadow .25s;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.1) inset,
+    0 4px 24px rgba(88,101,242,.45),
+    0 1px 0 rgba(255,255,255,.08) inset;
+}
+.btn-discord::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,.14) 0%, transparent 60%);
+  transition: opacity .25s;
+}
+.btn-discord:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.14) inset,
+    0 8px 40px rgba(88,101,242,.65),
+    0 0 80px rgba(88,101,242,.2);
+}
+.btn-discord:active { transform: translateY(0); }
+.btn-discord svg { width: 22px; height: 22px; fill: currentColor; flex-shrink: 0; position: relative; z-index: 1; }
+.btn-discord span { position: relative; z-index: 1; }
+
+/* ── Divider ── */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 18px 0;
+  color: rgba(255,255,255,.15);
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.divider::before, .divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent);
+}
+
+/* ── Invite button ── */
+.btn-invite {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  background: rgba(124,90,247,.08);
+  color: rgba(180,160,255,.8);
+  text-decoration: none;
+  padding: 14px 28px;
+  border-radius: 14px;
+  font-size: .9rem;
+  font-weight: 600;
+  letter-spacing: .01em;
+  border: 1px solid rgba(124,90,247,.22);
+  transition: all .25s cubic-bezier(.16,1,.3,1);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.03) inset;
+}
+.btn-invite:hover {
+  background: rgba(124,90,247,.16);
+  border-color: rgba(124,90,247,.5);
+  color: #c4b0ff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 24px rgba(124,90,247,.28), 0 0 0 1px rgba(255,255,255,.06) inset;
+}
+.btn-invite:active { transform: translateY(0); }
+
+/* ── Feature pills ── */
+.features {
+  margin-top: 32px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+.feature {
+  background: rgba(255,255,255,.025);
+  border: 1px solid rgba(255,255,255,.055);
+  border-radius: 10px;
+  padding: 11px 10px;
+  font-size: .76rem;
+  color: rgba(160,160,190,.5);
+  transition: background .2s, border-color .2s, color .2s;
+  cursor: default;
+}
+.feature:hover {
+  background: rgba(124,90,247,.08);
+  border-color: rgba(124,90,247,.2);
+  color: rgba(200,190,240,.7);
+}
+.feature .fi { font-size: .95rem; display: block; margin-bottom: 4px; }
+.feature strong { display: block; color: rgba(215,210,240,.65); font-weight: 600; font-size: .78rem; margin-bottom: 1px; }
+
+/* ── Footer ── */
+footer {
+  margin-top: 28px;
+  color: rgba(255,255,255,.18);
+  font-size: .75rem;
+  line-height: 1.7;
+}
+footer a { color: rgba(124,90,247,.55); text-decoration: none; transition: color .15s; }
+footer a:hover { color: #9d80ff; }
 </style>
 </head>
 <body>
+
+<div class="bg-orb orb-1"></div>
+<div class="bg-orb orb-2"></div>
+<div class="bg-orb orb-3"></div>
+<div class="bg-orb orb-4"></div>
+<div class="bg-grid"></div>
+<div class="bg-vignette"></div>
+<canvas id="pc" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas>
+
 <div class="card">
-  <div class="logo">🤖</div>
-  <h1>Bot Dashboard</h1>
-  <p>Manage your ticket system, custom commands, and server settings — all in one place.</p>
+  <div class="logo-wrap">
+    <div class="logo-pulse"></div>
+    <div class="logo-ring"></div>
+    <div class="logo">🤖</div>
+  </div>
+
+  <h1 class="title">Bot Dashboard</h1>
+  <p class="subtitle">Manage your Discord server — tickets,<br>moderation, levels, forms &amp; more.</p>
 
   <div class="error-banner" id="errorBanner"></div>
 
@@ -124,33 +349,90 @@
     <svg viewBox="0 0 71 55" xmlns="http://www.w3.org/2000/svg">
       <path d="M60.1 4.9A58.5 58.5 0 0 0 45.5.9a40.7 40.7 0 0 0-1.8 3.7 54.1 54.1 0 0 0-16.3 0A38.1 38.1 0 0 0 25.6.9 58.4 58.4 0 0 0 11 4.9C1.6 19 -.9 32.7.3 46.2a59 59 0 0 0 18 9.1 44 44 0 0 0 3.8-6.2 38.4 38.4 0 0 1-6-2.9c.5-.4 1-.7 1.5-1.1a41.9 41.9 0 0 0 35.8 0l1.5 1.1a38.3 38.3 0 0 1-6 2.9 44 44 0 0 0 3.8 6.2 58.8 58.8 0 0 0 18.1-9.1C71.8 30.6 68 17 60.1 4.9zM23.8 38.2c-3.5 0-6.4-3.2-6.4-7.2s2.8-7.2 6.4-7.2c3.5 0 6.4 3.2 6.3 7.2 0 4-2.8 7.2-6.3 7.2zm23.4 0c-3.5 0-6.4-3.2-6.4-7.2s2.8-7.2 6.4-7.2c3.5 0 6.3 3.2 6.3 7.2 0 4-2.8 7.2-6.3 7.2z"/>
     </svg>
-    Login with Discord
+    <span>Login with Discord</span>
   </a>
 
+  <div class="divider">or</div>
+
   <a href="/api/invite" target="_blank" rel="noopener" class="btn-invite">
-    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    Add Bot to Server
-  </a
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" y1="8" x2="12" y2="16"/>
+      <line x1="8" y1="12" x2="16" y2="12"/>
+    </svg>
+    Add Bot to Your Server
+  </a>
 
   <div class="features">
-    <div class="feature"><span>🎫 Tickets</span>Full ticket lifecycle management</div>
-    <div class="feature"><span>📋 Commands</span>Create custom !commands</div>
-    <div class="feature"><span>📊 Stats</span>Real-time ticket analytics</div>
-    <div class="feature"><span>⚙️ Settings</span>Configure per-server options</div>
+    <div class="feature"><span class="fi">🎫</span><strong>Tickets</strong>Full lifecycle</div>
+    <div class="feature"><span class="fi">🛡️</span><strong>Moderation</strong>Ban, kick, mute</div>
+    <div class="feature"><span class="fi">📊</span><strong>Levels</strong>XP leaderboard</div>
+    <div class="feature"><span class="fi">📋</span><strong>Forms</strong>Approvals</div>
+    <div class="feature"><span class="fi">⚙️</span><strong>AutoMod</strong>Spam filter</div>
+    <div class="feature"><span class="fi">🎭</span><strong>Roles</strong>Self-assign</div>
   </div>
 
-  <footer>Admin access only &mdash; you must be a server administrator.</footer>
+  <footer>
+    Admin access only — server administrator required.<br>
+    <a href="/api/invite" target="_blank" rel="noopener">Invite the bot</a> if you haven't added it to your server yet.
+  </footer>
 </div>
 
 <script>
-  const params = new URLSearchParams(location.search);
+(function () {
+  /* ── Particles ── */
+  var c = document.getElementById('pc');
+  var ctx = c.getContext('2d');
+  var W, H, pts = [];
+  function resize() { W = c.width = window.innerWidth; H = c.height = window.innerHeight; }
+  window.addEventListener('resize', resize);
+  resize();
+
+  var COLS = [
+    [124, 90, 247],
+    [88, 101, 242],
+    [247, 90, 139],
+    [61, 220, 132]
+  ];
+
+  function P() { this.init(); }
+  P.prototype.init = function () {
+    this.x  = Math.random() * W;
+    this.y  = Math.random() * H;
+    this.r  = Math.random() * 1.6 + 0.3;
+    this.vx = (Math.random() - 0.5) * 0.22;
+    this.vy = (Math.random() - 0.5) * 0.22;
+    this.a  = Math.random() * 0.45 + 0.08;
+    this.col = COLS[Math.floor(Math.random() * COLS.length)];
+  };
+  P.prototype.tick = function () {
+    this.x += this.vx; this.y += this.vy;
+    if (this.x < -4 || this.x > W + 4 || this.y < -4 || this.y > H + 4) this.init();
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(' + this.col + ',' + this.a + ')';
+    ctx.fill();
+  };
+
+  for (var i = 0; i < 90; i++) pts.push(new P());
+
+  function frame() {
+    ctx.clearRect(0, 0, W, H);
+    for (var j = 0; j < pts.length; j++) pts[j].tick();
+    requestAnimationFrame(frame);
+  }
+  frame();
+
+  /* ── Error banner ── */
+  var params = new URLSearchParams(location.search);
   if (params.get('error')) {
-    const el = document.getElementById('errorBanner');
+    var el = document.getElementById('errorBanner');
     el.style.display = 'block';
     el.textContent = params.get('error') === 'oauth_failed'
-      ? '⚠️ Authentication failed. Please try again.'
-      : '⚠️ Login error: ' + params.get('error');
+      ? '⚠️  Authentication failed. Please try again.'
+      : '⚠️  Login error: ' + params.get('error');
   }
+})();
 </script>
 </body>
 </html>
