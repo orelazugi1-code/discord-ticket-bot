@@ -74,7 +74,7 @@ tr:hover td{background:rgba(124,90,247,.05)}
 .badge-open{background:rgba(61,220,132,.12);color:var(--green)}
 .badge-closed{background:rgba(247,90,90,.12);color:var(--red)}
 .badge-on{background:rgba(61,220,132,.12);color:var(--green)}
-.badge-off{background:rgba(107,107,138,.12);color:var(--muted)}.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:7px;border:none;cursor:pointer;font-size:.83rem;font-weight:600;transition:opacity .15s,transform .1s;font-family:inherit}
+.badge-off{background:rgba(107,107,138,.12);color:var(--muted)}.badge-pending{background:rgba(247,201,90,.12);color:var(--yellow)}.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:7px;border:none;cursor:pointer;font-size:.83rem;font-weight:600;transition:opacity .15s,transform .1s;font-family:inherit}
 .btn:hover{opacity:.85}
 .btn:active{transform:scale(.97)}
 .btn-primary{background:linear-gradient(135deg,var(--accent),#6040d0);color:#fff;box-shadow:0 2px 12px rgba(124,90,247,.3)}
@@ -392,12 +392,12 @@ async function loadForms(){
         }
       }
       var qCount=f.question_count||0;
-      var qHtml=mode!=='role'?' · '+qCount+' question'+(qCount!==1?'s':''):'';
+      var qHtml=mode!=='role'?' · '+qCount+' question'+(qCount!==1?'s':''):'';var approvalHtml=(f.yes_label||f.no_label)?' <span style="display:inline-flex;align-items:center;gap:3px;background:rgba(247,201,90,.12);color:var(--yellow);padding:1px 7px;border-radius:20px;font-size:.7rem;font-weight:700">&#9881; Approval</span>':'';
       return '<div class="form-list-item" id="form-item-'+f.id+'">'+
         '<div class="fi-icon"><i class="fa-solid '+modeIcon+'"></i></div>'+
         '<div class="fi-info">'+
           '<div class="fi-title">'+escHtml(f.title)+'</div>'+
-          '<div class="fi-meta"><b>'+modeLabel+'</b>'+qHtml+rolesHtml+' · <span class="badge '+(f.active?'badge-on':'badge-off')+'">'+(f.active?'Active':'Disabled')+'</span></div>'+
+          '<div class="fi-meta"><b>'+modeLabel+'</b>'+qHtml+rolesHtml+approvalHtml+' · <span class="badge '+(f.active?'badge-on':'badge-off')+'">'+(f.active?'Active':'Disabled')+'</span></div>'+
         '</div>'+
         '<div class="fi-actions">'+
           (mode!=='role'?'<button class="btn btn-secondary btn-sm" onclick="viewFormDetail('+f.id+',\''+escHtml(f.title).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')"><i class="fa-solid fa-list"></i> Questions</button>':'')+
@@ -428,6 +428,10 @@ async function viewFormResponses(id,title){
       var typeTag='';
       if(r.response_type==='yes') typeTag='<span class="badge badge-on" style="margin-left:8px">Yes</span>';
       else if(r.response_type==='no') typeTag='<span class="badge badge-closed" style="margin-left:8px">No</span>';
+      var approvedTag='';
+      if(r.approved===1)      approvedTag=' <span style="background:rgba(61,220,132,.15);color:#3ddc84;padding:1px 7px;border-radius:20px;font-size:.7rem;font-weight:700">Approved</span>';
+      else if(r.approved===0) approvedTag=' <span style="background:rgba(247,90,90,.15);color:#f75a5a;padding:1px 7px;border-radius:20px;font-size:.7rem;font-weight:700">Rejected</span>';
+      else                    approvedTag=' <span style="background:rgba(247,201,90,.12);color:#f7c95a;padding:1px 7px;border-radius:20px;font-size:.7rem;font-weight:700">Pending</span>';
       var answersHtml='';
       try{
         var ans=typeof r.answers==='string'?JSON.parse(r.answers):r.answers;
@@ -446,7 +450,7 @@ async function viewFormResponses(id,title){
       }catch(e){}
       return '<div class="resp-item">'+
         '<div class="resp-header">'+
-          '<div class="resp-user">'+escHtml(r.user_tag||r.user_id)+typeTag+'</div>'+
+          '<div class="resp-user">'+escHtml(r.user_tag||r.user_id)+typeTag+approvedTag+'</div>'+
           '<div class="resp-time">'+(r.created_at?new Date(r.created_at).toLocaleString():'')+'</div>'+
         '</div>'+
         (answersHtml||'<div class="resp-answer" style="color:var(--muted)">No text answers</div>')+

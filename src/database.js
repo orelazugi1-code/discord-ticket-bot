@@ -180,6 +180,10 @@ db.exec(`
   `ALTER TABLE guild_config ADD COLUMN goodbye_enabled INTEGER DEFAULT 0`,
   `ALTER TABLE form_responses ADD COLUMN user_tag TEXT`,
   `ALTER TABLE form_responses ADD COLUMN response_type TEXT DEFAULT 'submit'`,
+  `ALTER TABLE forms ADD COLUMN yes_label TEXT DEFAULT 'Accept'`,
+  `ALTER TABLE forms ADD COLUMN no_label  TEXT DEFAULT 'Reject'`,
+  `ALTER TABLE form_responses ADD COLUMN approved       INTEGER`,
+  `ALTER TABLE form_responses ADD COLUMN log_message_id TEXT`,
 ].forEach(sql => { try { db.exec(sql); } catch {} });
 
 // ── Prepared statements ───────────────────────────────────────────────────────
@@ -235,7 +239,7 @@ const stmts = {
   updateButtonRoleMsgId: db.prepare('UPDATE button_roles SET message_id = ? WHERE id = ?'),
   deleteButtonRole:      db.prepare('DELETE FROM button_roles WHERE id = ? AND guild_id = ?'),
 
-  createForm:            db.prepare('INSERT INTO forms (guild_id, title, description, channel_id, log_channel_id, button_label, mode, role_id, accept_message, decline_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+  createForm:            db.prepare('INSERT INTO forms (guild_id, title, description, channel_id, log_channel_id, button_label, mode, role_id, accept_message, decline_message, yes_label, no_label) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
   getForm:               db.prepare('SELECT * FROM forms WHERE id = ?'),
   getForms:              db.prepare('SELECT * FROM forms WHERE guild_id = ? ORDER BY created_at DESC'),
   updateFormMsgId:       db.prepare('UPDATE forms SET message_id = ? WHERE id = ?'),
@@ -248,6 +252,9 @@ const stmts = {
   deleteFormQuestion:    db.prepare('DELETE FROM form_questions WHERE id = ?'),
   saveFormResponse:      db.prepare('INSERT INTO form_responses (form_id, user_id, guild_id, answers, user_tag, response_type) VALUES (?, ?, ?, ?, ?, ?)'),
   getFormResponses:      db.prepare('SELECT * FROM form_responses WHERE form_id = ? ORDER BY created_at DESC LIMIT 100'),
+  getFormResponseById:   db.prepare('SELECT * FROM form_responses WHERE id = ?'),
+  setResponseDecision:   db.prepare('UPDATE form_responses SET approved = ? WHERE id = ?'),
+  setResponseLogMsgId:   db.prepare('UPDATE form_responses SET log_message_id = ? WHERE id = ?'),
   addFormRole:           db.prepare('INSERT INTO form_roles (form_id, role_id, trigger) VALUES (?, ?, ?)'),
   getFormRoles:          db.prepare('SELECT * FROM form_roles WHERE form_id = ?'),
   deleteFormRolesByForm: db.prepare('DELETE FROM form_roles WHERE form_id = ?'),
@@ -365,8 +372,11 @@ module.exports = {
       opts.title, opts.description || '',
       opts.channel_id, opts.log_channel_id || null,
       opts.button_label || opts.title, opts.mode || opts.form_type || 'modal',
-      opts.role_id || null, opts.auto_response || opts.accept_message || '',
-      opts.no_response || opts.decline_message || '',
+      opts.role_id || null,
+      opts.accept_message || opts.auto_response || '',
+      opts.decline_message || opts.no_response || '',
+      opts.yes_label || null,
+      opts.no_label  || null,
     );
     return Number(r.lastInsertRowid);
   },
@@ -389,12 +399,21 @@ module.exports = {
   getFormRoles:   formId => stmts.getFormRoles.all(formId),
   deleteFormRoles:formId => stmts.deleteFormRolesByForm.run(formId),
 
-  saveFormResponse:  (formId, userId, guildId, answers, userTag, responseType) =>
-    stmts.saveFormResponse.run(formId, userId, guildId, JSON.stringify(answers), userTag || null, responseType || 'submit'),
+  saveFormResponse:  (formId, userId, guildId, answers, userTag, responseType) => {
+    const r = stmts.saveFormResponse.run(formId, userId, guildId, JSON.stringify(answers), userTag || null, responseType || 'submit');
+    return Number(r.lastInsertRowid);
+  },
   getFormResponses:  formId => stmts.getFormResponses.all(formId).map(r => ({
     ...r,
     answers: (() => { try { return JSON.parse(r.answers); } catch { return []; } })(),
   })),
+  getFormResponse:       id => {
+    const r = stmts.getFormResponseById.get(id);
+    if (!r) return null;
+    return { ...r, answers: (() => { try { return JSON.parse(r.answers); } catch { return {}; } })() };
+  },
+  setResponseDecision:   (id, approved) => stmts.setResponseDecision.run(approved ? 1 : 0, id),
+  setResponseLogMessage: (id, msgId) => stmts.setResponseLogMsgId.run(msgId, id),
 
   addTempRole:         (guildId, userId, roleId, expiresAt) => stmts.addTempRole.run(guildId, userId, roleId, expiresAt),
   getExpiredTempRoles: () => stmts.getExpiredTempRoles.all(),

@@ -1,5 +1,6 @@
 ﻿const {
-  ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, EmbedBuilder,
+  ModalBuilder, TextInputBuilder, TextInputStyle,
+  ActionRowBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle,
 } = require('discord.js');
 const { closeTicketChannel } = require('../utils/ticketManager');
 
@@ -9,8 +10,7 @@ async function handleButton(interaction, db) {
 
   // ── Ticket buttons ────────────────────────────────────────────────────────
   if (ns === 'ticket') {
-    const action = parts[1];
-    if (action === 'open') {
+    if (parts[1] === 'open') {
       const modal = new ModalBuilder().setCustomId('ticket:create').setTitle('Open a Support Ticket');
       modal.addComponents(
         new ActionRowBuilder().addComponents(
@@ -24,7 +24,7 @@ async function handleButton(interaction, db) {
       );
       return interaction.showModal(modal);
     }
-    if (action === 'close') {
+    if (parts[1] === 'close') {
       const ticket = db.getTicketByChannel(interaction.channel.id);
       if (!ticket || ticket.status === 'closed') {
         return interaction.reply({ content: '❌ This ticket is already closed.', ephemeral: true });
@@ -59,13 +59,81 @@ async function handleButton(interaction, db) {
     return;
   }
 
-  // ── Form buttons ──────────────────────────────────────────────────────────
-  // customId formats:
-  //   form:open:<id>  — modal mode OR rolebutton mode
-  //   form:yes:<id>   — yesno mode, user clicked Yes
-  //   form:no:<id>    — yesno mode, user clicked No
+  // ── Staff approval buttons ────────────────────────────────────────────────
+  // customId: fapprove:<yes|no>:<responseId>
+  if (ns === 'fapprove') {
+    const decision   = parts[1];       // 'yes' | 'no'
+    const responseId = parseInt(parts[2]);
+
+    await interaction.deferUpdate();   // acknowledge fast, then edit the message
+
+    const response = db.getFormResponse(responseId);
+    if (!response) {
+      return interaction.followUp({ content: '❌ Response record not found.', ephemeral: true });
+    }
+
+    // One-time only: check if already decided
+    if (response.approved !== null && response.approved !== undefined) {
+      const prev = response.approved === 1 ? 'approved' : 'rejected';
+      return interaction.followUp({ content: `⚠️ This submission was already **${prev}**.`, ephemeral: true });
+    }
+
+    const form = db.getForm(response.form_id);
+    if (!form) {
+      return interaction.followUp({ content: '❌ Form no longer exists.', ephemeral: true });
+    }
+
+    const guild = interaction.guild;
+
+    // Fetch the original member so we can DM + assign roles
+    const member = await guild.members.fetch(response.user_id).catch(() => null);
+
+    // DM the user
+    const dmMessage = decision === 'yes'
+      ? (form.accept_message  || '✅ Your application has been approved!')
+      : (form.decline_message || '❌ Your application has been declined.');
+
+    if (member) {
+      await member.send({ content: dmMessage }).catch(() => {
+        console.warn(`[Forms] Could not DM user ${response.user_id} — DMs may be closed.`);
+      });
+    }
+
+    // Assign the appropriate role
+    const formRoles = db.getFormRoles(form.id);
+    const rolesToAdd = formRoles.filter(r => r.trigger === decision);
+    if (member) {
+      for (const fr of rolesToAdd) {
+        await member.roles.add(fr.role_id).catch(err => console.warn('[Forms] role assign error:', err.message));
+      }
+    }
+
+    // Mark decision in DB
+    db.setResponseDecision(responseId, decision === 'yes');
+
+    // Edit the log message: remove buttons, add decision footer
+    const staffUser = interaction.user;
+    const original  = interaction.message;
+    const oldEmbed  = original.embeds[0];
+
+    const updatedEmbed = EmbedBuilder.from(oldEmbed)
+      .setColor(decision === 'yes' ? 0x3ddc84 : 0xf75a5a)
+      .setFooter({
+        text: `${decision === 'yes' ? '✅ Approved' : '❌ Rejected'} by ${staffUser.tag}`,
+      });
+
+    await original.edit({ embeds: [updatedEmbed], components: [] }).catch(() => {});
+
+    return interaction.followUp({
+      content: `${decision === 'yes' ? '✅' : '❌'} **${decision === 'yes' ? 'Approved' : 'Rejected'}** — <@${response.user_id}> has been notified.`,
+      ephemeral: true,
+    });
+  }
+
+  // ── Form open/yes/no buttons ──────────────────────────────────────────────
+  // customId: form:<open|yes|no>:<formId>
   if (ns === 'form') {
-    const action = parts[1];           // open | yes | no
+    const action = parts[1];
     const formId = parseInt(parts[2]);
     const form   = db.getForm(formId);
 
@@ -75,26 +143,20 @@ async function handleButton(interaction, db) {
 
     const mode = form.mode || 'modal';
 
-    // ── rolebutton: assign roles immediately ──────────────────────────────
+    // rolebutton: assign roles immediately
     if (action === 'open' && mode === 'role') {
       await interaction.deferReply({ ephemeral: true });
       const formRoles = db.getFormRoles(formId).filter(r => r.trigger === 'submit');
-      const assigned = [];
+      const assigned  = [];
       for (const fr of formRoles) {
         const role = interaction.guild.roles.cache.get(fr.role_id);
-        if (role) {
-          await interaction.member.roles.add(fr.role_id).catch(() => {});
-          assigned.push(role.name);
-        }
+        if (role) { await interaction.member.roles.add(fr.role_id).catch(() => {}); assigned.push(role.name); }
       }
       db.saveFormResponse(formId, interaction.user.id, interaction.guildId, {}, interaction.user.tag, 'submit');
-      const msg = assigned.length
-        ? `✅ You have been given: **${assigned.join(', ')}**`
-        : '✅ Done!';
-      return interaction.editReply({ content: msg });
+      return interaction.editReply({ content: assigned.length ? `✅ You have been given: **${assigned.join(', ')}**` : '✅ Done!' });
     }
 
-    // ── modal mode: open modal with questions ─────────────────────────────
+    // modal mode: open modal with questions
     if (action === 'open' && mode === 'modal') {
       const questions = db.getFormQuestions(formId);
       if (!questions.length) {
@@ -103,20 +165,16 @@ async function handleButton(interaction, db) {
       return interaction.showModal(buildFormModal(formId, form.title, questions, 'modal'));
     }
 
-    // ── yesno: Yes button ─────────────────────────────────────────────────
+    // yesno: Yes button
     if (action === 'yes') {
       const questions = db.getFormQuestions(formId);
-      if (questions.length > 0) {
-        // open a modal so the user can answer the questions
-        return interaction.showModal(buildFormModal(formId, form.title, questions, 'yes'));
-      }
-      // no questions — immediately log + assign yes roles + respond
+      if (questions.length > 0) return interaction.showModal(buildFormModal(formId, form.title, questions, 'yes'));
       await interaction.deferReply({ ephemeral: true });
       await handleFormSubmit(interaction, form, {}, 'yes', db);
       return;
     }
 
-    // ── yesno: No button ──────────────────────────────────────────────────
+    // yesno: No button
     if (action === 'no') {
       await interaction.deferReply({ ephemeral: true });
       await handleFormSubmit(interaction, form, {}, 'no', db);
@@ -125,13 +183,11 @@ async function handleButton(interaction, db) {
   }
 }
 
-// Build a Discord modal for a form
+// ── Build a Discord modal ─────────────────────────────────────────────────────
 function buildFormModal(formId, title, questions, type) {
-  // type: 'modal' | 'yes'  — encoded in customId so modalHandler knows the response type
   const modal = new ModalBuilder()
     .setCustomId(`fsubmit:${type}:${formId}`)
     .setTitle(title.substring(0, 45));
-
   for (const q of questions.slice(0, 5)) {
     modal.addComponents(
       new ActionRowBuilder().addComponents(
@@ -147,58 +203,83 @@ function buildFormModal(formId, title, questions, type) {
   return modal;
 }
 
-// Process a completed form submission (called by both buttonHandler and modalHandler)
+// ── Process a completed form submission ───────────────────────────────────────
 async function handleFormSubmit(interaction, form, answers, responseType, db) {
   const { user, guild } = interaction;
+  const isApprovalMode  = !!(form.yes_label || form.no_label);
 
-  // Log to log channel
-  if (form.log_channel_id) {
-    const logCh = guild.channels.cache.get(form.log_channel_id);
-    if (logCh) {
-      const embed = new EmbedBuilder()
-        .setTitle(`📋 Form Response: ${form.title}`)
-        .setColor(responseType === 'yes' ? 0x3ddc84 : responseType === 'no' ? 0xf75a5a : 0x7c5af7)
-        .addFields({ name: 'User', value: `<@${user.id}> (${user.tag})`, inline: true })
-        .setTimestamp();
-
-      if (responseType === 'yes' || responseType === 'no') {
-        embed.addFields({ name: 'Answer', value: responseType === 'yes' ? '✅ Yes' : '❌ No', inline: true });
-      }
-
-      // add question answers
-      const questions = db.getFormQuestions(form.id);
-      for (const q of questions) {
-        const val = answers[`q_${q.id}`] || answers[`q${q.id}`] || '';
-        if (val) embed.addFields({ name: q.question.substring(0, 256), value: String(val).substring(0, 1024) });
-      }
-
-      await logCh.send({ embeds: [embed] }).catch(() => {});
-    }
-  }
-
-  // Save response
-  db.saveFormResponse(form.id, user.id, guild.id, answers, user.tag, responseType);
-
-  // Assign roles
-  const formRoles = db.getFormRoles(form.id);
-  const triggerRoles = formRoles.filter(r =>
-    r.trigger === 'submit' ||
-    r.trigger === responseType
-  );
-  for (const fr of triggerRoles) {
+  // Assign "submit" roles immediately (regardless of approval mode)
+  const submitRoles = db.getFormRoles(form.id).filter(r => r.trigger === 'submit');
+  for (const fr of submitRoles) {
     await interaction.member.roles.add(fr.role_id).catch(() => {});
   }
 
-  // Send response to user
-  let replyMsg;
-  if (responseType === 'yes') {
-    replyMsg = form.accept_message || '✅ Thank you for your response!';
-  } else if (responseType === 'no') {
-    replyMsg = form.decline_message || '❌ Your response has been recorded.';
-  } else {
-    replyMsg = form.accept_message || '✅ Your response has been submitted!';
+  // Save to DB and get the new response ID
+  const responseId = db.saveFormResponse(form.id, user.id, guild.id, answers, user.tag, responseType);
+
+  // Build the log embed
+  const logEmbed = new EmbedBuilder()
+    .setTitle(`📋 Form Response: ${form.title}`)
+    .setColor(responseType === 'yes' ? 0x3ddc84 : responseType === 'no' ? 0xf75a5a : 0x7c5af7)
+    .addFields({ name: 'User', value: `<@${user.id}> (${user.tag})`, inline: true })
+    .setTimestamp();
+
+  if (responseType === 'yes' || responseType === 'no') {
+    logEmbed.addFields({ name: 'Answer', value: responseType === 'yes' ? '✅ Yes' : '❌ No', inline: true });
   }
-  await interaction.editReply({ content: replyMsg });
+
+  // Add Q&A fields
+  const questions = db.getFormQuestions(form.id);
+  for (const q of questions) {
+    const val = answers[`q_${q.id}`] || answers[`q${q.id}`] || '';
+    if (val) logEmbed.addFields({ name: q.question.substring(0, 256), value: String(val).substring(0, 1024) });
+  }
+
+  // Send to log channel
+  if (form.log_channel_id) {
+    const logCh = guild.channels.cache.get(form.log_channel_id);
+    if (logCh) {
+      let logMsg;
+      if (isApprovalMode) {
+        // Send with approval buttons
+        const yesBtn = new ButtonBuilder()
+          .setCustomId(`fapprove:yes:${responseId}`)
+          .setLabel(form.yes_label || 'Accept')
+          .setStyle(ButtonStyle.Success);
+        const noBtn = new ButtonBuilder()
+          .setCustomId(`fapprove:no:${responseId}`)
+          .setLabel(form.no_label || 'Reject')
+          .setStyle(ButtonStyle.Danger);
+        logMsg = await logCh.send({
+          embeds:     [logEmbed],
+          components: [new ActionRowBuilder().addComponents(yesBtn, noBtn)],
+        }).catch(() => null);
+      } else {
+        logMsg = await logCh.send({ embeds: [logEmbed] }).catch(() => null);
+      }
+      if (logMsg) db.setResponseLogMessage(responseId, logMsg.id);
+    }
+  }
+
+  // Reply to the user
+  if (isApprovalMode) {
+    // Don't DM yet — staff will trigger the DM when they approve/reject
+    await interaction.editReply({ content: '✅ Your response has been submitted and is pending review!' });
+  } else {
+    // Assign yes/no roles immediately if not in approval mode
+    const triggerRoles = db.getFormRoles(form.id).filter(r =>
+      r.trigger === 'submit' || r.trigger === responseType
+    );
+    for (const fr of triggerRoles.filter(r => r.trigger !== 'submit')) {
+      await interaction.member.roles.add(fr.role_id).catch(() => {});
+    }
+    // DM the user
+    let replyMsg;
+    if (responseType === 'yes')      replyMsg = form.accept_message  || '✅ Thank you for your response!';
+    else if (responseType === 'no')  replyMsg = form.decline_message || '❌ Your response has been recorded.';
+    else                             replyMsg = form.accept_message  || '✅ Your response has been submitted!';
+    await interaction.editReply({ content: replyMsg });
+  }
 }
 
 module.exports = { handleButton, handleFormSubmit };

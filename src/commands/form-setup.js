@@ -26,6 +26,12 @@ module.exports = {
       .addRoleOption(o => o.setName('role').setDescription('Role to assign after submission'))
       .addRoleOption(o => o.setName('role2').setDescription('Second role to assign'))
       .addRoleOption(o => o.setName('role3').setDescription('Third role to assign'))
+      .addStringOption(o => o.setName('yes_label').setDescription('Approve button label shown to staff (default: Accept)').setMaxLength(50))
+      .addStringOption(o => o.setName('no_label').setDescription('Reject button label shown to staff (default: Reject)').setMaxLength(50))
+      .addStringOption(o => o.setName('yes_response').setDescription('DM sent to user when staff approves').setMaxLength(500))
+      .addStringOption(o => o.setName('no_response').setDescription('DM sent to user when staff rejects').setMaxLength(500))
+      .addRoleOption(o => o.setName('yes_role').setDescription('Role assigned when staff approves'))
+      .addRoleOption(o => o.setName('no_role').setDescription('Role assigned when staff rejects'))
     )
 
     // ── Subcommand: yesno ────────────────────────────────────────────────────
@@ -125,24 +131,39 @@ module.exports = {
     if (sub === 'modal') {
       const logChannel   = interaction.options.getChannel('log_channel');
       const autoResponse = interaction.options.getString('auto_response') || '✅ Thank you! Your response has been submitted.';
+      const yesLabel     = interaction.options.getString('yes_label');
+      const noLabel      = interaction.options.getString('no_label');
+      const yesResponse  = interaction.options.getString('yes_response');
+      const noResponse   = interaction.options.getString('no_response');
       const questions    = ['q1','q2','q3','q4','q5'].map(k => interaction.options.getString(k)).filter(Boolean);
-      const roles        = ['role','role2','role3'].map(k => interaction.options.getRole(k)).filter(Boolean);
+      const submitRoles  = ['role','role2','role3'].map(k => interaction.options.getRole(k)).filter(Boolean);
+      const yesRole      = interaction.options.getRole('yes_role');
+      const noRole       = interaction.options.getRole('no_role');
+
+      // If any approval option is set, this form uses the staff-review workflow
+      const approvalMode = !!(yesLabel || noLabel || yesResponse || noResponse || yesRole || noRole);
 
       const formId = db.createForm(interaction.guildId, {
         title, description,
-        channel_id: channel.id,
+        channel_id:    channel.id,
         log_channel_id: logChannel.id,
-        mode: 'modal',
-        auto_response: autoResponse,
+        mode:          'modal',
+        // In approval mode accept_message is the yes DM; otherwise it is the immediate DM
+        accept_message:  approvalMode ? (yesResponse || '✅ Your application has been approved!') : autoResponse,
+        decline_message: approvalMode ? (noResponse  || '❌ Your application has been declined.') : null,
+        yes_label: approvalMode ? (yesLabel || 'Accept') : null,
+        no_label:  approvalMode ? (noLabel  || 'Reject') : null,
       });
       questions.forEach((q, i) => db.addFormQuestion(formId, q, i));
-      roles.forEach(r => db.addFormRole(formId, r.id, 'submit'));
+      submitRoles.forEach(r => db.addFormRole(formId, r.id, 'submit'));
+      if (yesRole) db.addFormRole(formId, yesRole.id, 'yes');
+      if (noRole)  db.addFormRole(formId, noRole.id,  'no');
 
       const embed = new EmbedBuilder()
         .setTitle(title)
         .setDescription(description || 'Click the button below to fill out this form.')
         .setColor(0x7c5af7)
-        .setFooter({ text: `${questions.length} question(s) · Form ID: ${formId}` });
+        .setFooter({ text: `${questions.length} question(s) · Form ID: ${formId}${approvalMode ? ' · Staff approval required' : ''}` });
 
       const btn = new ButtonBuilder()
         .setCustomId(`form:open:${formId}`)
@@ -152,8 +173,11 @@ module.exports = {
       const msg = await channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(btn)] });
       db.setFormMessageId(formId, msg.id);
 
+      const approvalNote = approvalMode
+        ? `\n**Approval buttons:** "${yesLabel||'Accept'}" / "${noLabel||'Reject'}"`
+        : '';
       return interaction.editReply(
-        `✅ Form created in ${channel}!\n**Questions:** ${questions.length}\n**Log:** ${logChannel}\n**Form ID:** \`${formId}\``
+        `✅ Form created in ${channel}!\n**Questions:** ${questions.length}\n**Log:** ${logChannel}${approvalNote}\n**Form ID:** \`${formId}\``
       );
     }
 
