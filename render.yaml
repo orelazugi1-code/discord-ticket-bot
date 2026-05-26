@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: discord-bot
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install
+    startCommand: node start.js
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /opt/render/project/src/data
+      - key: BOT_TOKEN
+        sync: false
+      - key: CLIENT_ID
+        sync: false
+      - key: CLIENT_SECRET
+        sync: false
+      - key: GUILD_ID
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: REDIRECT_URI
+        sync: false
