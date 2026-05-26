@@ -333,6 +333,10 @@ app.get('/api/guild/:guildId/info', requireAuth, requireGuildAccess, async (req,
     const guildRes = await axios.get(`${DISCORD_API}/guilds/${guildId}?with_counts=true`, { headers: botHeaders() });
     res.json({ memberCount: guildRes.data.approximate_member_count, name: guildRes.data.name });
   } catch (err) {
+    const status = err.response?.status;
+    if (status === 403 || status === 404) {
+      return res.json({ bot_not_in_guild: true, guild_id: guildId });
+    }
     res.status(500).json({ error: err.response?.data?.message ?? err.message });
   }
 });
@@ -365,6 +369,7 @@ app.get('/api/invite', (req, res) => {
     permissions: '1099780189206',
     scope:       'bot applications.commands',
   });
+  if (req.query.guild_id) params.set('guild_id', req.query.guild_id);
   res.redirect(`https://discord.com/oauth2/authorize?${params}`);
 });
 

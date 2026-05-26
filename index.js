@@ -37,19 +37,19 @@ client.once(Events.ClientReady, async c => {
   const commands = client.commands.map(cmd => cmd.data.toJSON());
 
   try {
-    await rest.put(
-      Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-      { body: commands },
-    );
-    console.log(`✅ Registered ${commands.length} guild slash command(s)`);
+    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
+    console.log(`✅ Registered ${commands.length} global slash command(s)`);
 
-    const existing = await rest.get(Routes.applicationCommands(process.env.CLIENT_ID));
-    if (existing.length > 0) {
-      await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: [] });
-      console.log(`✅ Cleared ${existing.length} global slash command(s) from previous projects`);
+    // Clear any stale guild-specific commands from the dev guild
+    if (process.env.GUILD_ID) {
+      await rest.put(
+        Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+        { body: [] },
+      ).catch(() => {});
+      console.log('✅ Cleared old guild-specific slash commands');
     }
   } catch (err) {
-    console.error('Failed to register/clean slash commands:', err);
+    console.error('Failed to register slash commands:', err);
   }
 
   // Auto-close checker — runs every hour
