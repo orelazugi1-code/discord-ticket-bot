@@ -3,8 +3,10 @@ const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 const fs = require('fs');
 
-const dbPath = path.join(__dirname, '..', 'data', 'bot.db');
-fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+// DATA_DIR env var lets Railway volumes persist DB across redeploys
+const dataDir = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
+const dbPath  = path.join(dataDir, 'bot.db');
+fs.mkdirSync(dataDir, { recursive: true });
 
 const db = new DatabaseSync(dbPath);
 db.exec('PRAGMA journal_mode = WAL');
