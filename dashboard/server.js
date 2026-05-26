@@ -239,7 +239,7 @@ app.delete('/api/guild/:guildId/button-roles/:id', requireAuth, requireGuildAcce
 
 // ── Slash Commands ────────────────────────────────────────────────────────────
 
-const botHeaders = () => ({ Authorization: `Bot ${process.env.BOT_TOKEN}` });
+const botHeaders = () => ({ Authorization: `Bot ${(process.env.BOT_TOKEN || '').trim()}` });
 
 app.get('/api/guild/:guildId/slash-commands', requireAuth, requireGuildAccess, async (req, res) => {
   const { guildId } = req.params;

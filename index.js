@@ -33,7 +33,7 @@ for (const file of fs.readdirSync(cmdDir).filter(f => f.endsWith('.js'))) {
 client.once(Events.ClientReady, async c => {
   console.log(`✅ Logged in as ${c.user.tag}`);
 
-  const rest     = new REST().setToken(process.env.BOT_TOKEN);
+  const rest     = new REST().setToken((process.env.BOT_TOKEN || '').trim());
   const commands = client.commands.map(cmd => cmd.data.toJSON());
 
   try {
@@ -245,4 +245,9 @@ async function handleXp(message, db) {
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 
-client.login(process.env.BOT_TOKEN);
+// Trim to strip any invisible chars (newlines, spaces) that cause UND_ERR_INVALID_ARG
+const BOT_TOKEN = (process.env.BOT_TOKEN || '').trim();
+const missing = ['BOT_TOKEN','CLIENT_ID','CLIENT_SECRET','GUILD_ID','SESSION_SECRET']
+  .filter(k => !process.env[k]?.trim());
+if (missing.length) console.error('⚠️  Missing env vars:', missing.join(', '));
+client.login(BOT_TOKEN);
