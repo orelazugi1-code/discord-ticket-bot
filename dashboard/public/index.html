@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Discord Bot — Login</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: radial-gradient(ellipse at top, #1a1f2e 0%, #0d1117 70%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #dcddde;
+  }
+
+  .card {
+    background: #1e2130;
+    border: 1px solid #2d3148;
+    border-radius: 16px;
+    padding: 48px 40px;
+    max-width: 420px;
+    width: 90%;
+    text-align: center;
+    box-shadow: 0 24px 64px rgba(0,0,0,.5);
+  }
+
+  .logo {
+    width: 72px;
+    height: 72px;
+    background: #5865f2;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 24px;
+    font-size: 2rem;
+  }
+
+  h1 { font-size: 1.6rem; color: #fff; margin-bottom: 8px; }
+  p  { color: #8e9297; font-size: .95rem; line-height: 1.5; margin-bottom: 32px; }
+
+  .btn-discord {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: #5865f2;
+    color: #fff;
+    text-decoration: none;
+    padding: 14px 28px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: background .2s, transform .1s;
+    width: 100%;
+    justify-content: center;
+  }
+  .btn-discord:hover   { background: #4752c4; transform: translateY(-1px); }
+  .btn-discord:active  { transform: translateY(0); }
+  .btn-discord svg     { width: 22px; height: 22px; fill: currentColor; flex-shrink: 0; }
+
+  .error-banner {
+    background: #3d1515;
+    border: 1px solid #ed4245;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: .875rem;
+    color: #ed4245;
+    margin-bottom: 20px;
+    display: none;
+  }
+
+  .features {
+    margin-top: 28px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    text-align: left;
+  }
+  .feature {
+    background: #252840;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: .8rem;
+    color: #8e9297;
+  }
+  .feature span { display: block; color: #dcddde; font-weight: 600; margin-bottom: 2px; }
+
+  footer { margin-top: 28px; color: #4f545c; font-size: .8rem; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🤖</div>
+  <h1>Bot Dashboard</h1>
+  <p>Manage your ticket system, custom commands, and server settings — all in one place.</p>
+
+  <div class="error-banner" id="errorBanner"></div>
+
+  <a href="/auth/login" class="btn-discord">
+    <svg viewBox="0 0 71 55" xmlns="http://www.w3.org/2000/svg">
+      <path d="M60.1 4.9A58.5 58.5 0 0 0 45.5.9a40.7 40.7 0 0 0-1.8 3.7 54.1 54.1 0 0 0-16.3 0A38.1 38.1 0 0 0 25.6.9 58.4 58.4 0 0 0 11 4.9C1.6 19 -.9 32.7.3 46.2a59 59 0 0 0 18 9.1 44 44 0 0 0 3.8-6.2 38.4 38.4 0 0 1-6-2.9c.5-.4 1-.7 1.5-1.1a41.9 41.9 0 0 0 35.8 0l1.5 1.1a38.3 38.3 0 0 1-6 2.9 44 44 0 0 0 3.8 6.2 58.8 58.8 0 0 0 18.1-9.1C71.8 30.6 68 17 60.1 4.9zM23.8 38.2c-3.5 0-6.4-3.2-6.4-7.2s2.8-7.2 6.4-7.2c3.5 0 6.4 3.2 6.3 7.2 0 4-2.8 7.2-6.3 7.2zm23.4 0c-3.5 0-6.4-3.2-6.4-7.2s2.8-7.2 6.4-7.2c3.5 0 6.3 3.2 6.3 7.2 0 4-2.8 7.2-6.3 7.2z"/>
+    </svg>
+    Login with Discord
+  </a>
+
+  <div class="features">
+    <div class="feature"><span>🎫 Tickets</span>Full ticket lifecycle management</div>
+    <div class="feature"><span>📋 Commands</span>Create custom !commands</div>
+    <div class="feature"><span>📊 Stats</span>Real-time ticket analytics</div>
+    <div class="feature"><span>⚙️ Settings</span>Configure per-server options</div>
+  </div>
+
+  <footer>Admin access only &mdash; you must be a server administrator.</footer>
+</div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  if (params.get('error')) {
+    const el = document.getElementById('errorBanner');
+    el.style.display = 'block';
+    el.textContent = params.get('error') === 'oauth_failed'
+      ? '⚠️ Authentication failed. Please try again.'
+      : '⚠️ Login error: ' + params.get('error');
+  }
+</script>
+</body>
+</html>

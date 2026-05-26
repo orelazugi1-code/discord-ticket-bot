@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bot Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #1a1d24;
+    --surface:  #1e2130;
+    --elevated: #252840;
+    --border:   #2d3148;
+    --accent:   #5865f2;
+    --accent2:  #4752c4;
+    --text:     #dcddde;
+    --muted:    #8e9297;
+    --green:    #57f287;
+    --red:      #ed4245;
+    --yellow:   #faa61a;
+    --radius:   10px;
+  }
+
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* ── Top bar ── */
+  .topbar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .topbar-logo { font-size: 1.3rem; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; }
+  .topbar-logo span { color: var(--accent); }
+  .topbar-spacer { flex: 1; }
+
+  .guild-select {
+    background: var(--elevated);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: var(--radius);
+    font-size: .875rem;
+    cursor: pointer;
+    outline: none;
+    max-width: 220px;
+  }
+  .guild-select:focus { border-color: var(--accent); }
+
+  .user-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--elevated);
+    padding: 6px 12px;
+    border-radius: var(--radius);
+    font-size: .875rem;
+  }
+  .user-chip img { width: 28px; height: 28px; border-radius: 50%; }
+  .btn-logout {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 6px 12px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: .8rem;
+    transition: all .15s;
+  }
+  .btn-logout:hover { border-color: var(--red); color: var(--red); }
+
+  /* ── Layout ── */
+  .layout { display: flex; flex: 1; overflow: hidden; }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 220px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 20px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+    overflow-y: auto;
+  }
+  .nav-section { font-size: .7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; padding: 8px 12px 4px; margin-top: 8px; }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    color: var(--muted);
+    font-size: .9rem;
+    transition: all .15s;
+    border: none;
+    background: transparent;
+    width: 100%;
+    text-align: left;
+  }
+  .nav-item:hover   { background: var(--elevated); color: var(--text); }
+  .nav-item.active  { background: var(--accent); color: #fff; }
+  .nav-icon { font-size: 1.1rem; width: 20px; text-align: center; }
+
+  /* ── Main ── */
+  .main { flex: 1; padding: 28px; overflow-y: auto; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  h2 { font-size: 1.3rem; color: #fff; margin-bottom: 20px; }
+  h3 { font-size: 1rem; color: #fff; margin-bottom: 12px; }
+
+  /* ── Stats cards ── */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; margin-bottom: 28px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; text-align: center; }
+  .stat-card .val { font-size: 2rem; font-weight: 700; color: #fff; }
+  .stat-card .lbl { font-size: .8rem; color: var(--muted); margin-top: 4px; }
+
+  /* ── Table ── */
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+  th { background: var(--elevated); color: var(--muted); padding: 10px 14px; text-align: left; font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
+  td { padding: 10px 14px; border-top: 1px solid var(--border); vertical-align: middle; }
+  tr:hover td { background: var(--elevated); }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: .75rem; font-weight: 600; }
+  .badge-open   { background: rgba(87,242,135,.15); color: var(--green); }
+  .badge-closed { background: rgba(237,66,69,.15);  color: var(--red);   }
+  .badge-admin  { background: rgba(250,166,26,.15); color: var(--yellow); }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 6px; border: none;
+    cursor: pointer; font-size: .85rem; font-weight: 600;
+    transition: opacity .15s, transform .1s;
+  }
+  .btn:hover  { opacity: .85; }
+  .btn:active { transform: scale(.97); }
+  .btn-primary { background: var(--accent);  color: #fff; }
+  .btn-danger  { background: var(--red);     color: #fff; }
+  .btn-success { background: #3b7d4f;        color: #fff; }
+  .btn-ghost   { background: var(--elevated); color: var(--text); border: 1px solid var(--border); }
+  .btn-sm      { padding: 4px 10px; font-size: .8rem; }
+
+  /* ── Form ── */
+  .form-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 24px; }
+  .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 160px; }
+  label { font-size: .8rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  input[type="text"], input[type="number"], textarea, select {
+    background: var(--elevated); border: 1px solid var(--border); color: var(--text);
+    padding: 8px 12px; border-radius: 6px; font-size: .9rem; outline: none; width: 100%;
+    transition: border-color .15s;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 80px; font-family: inherit; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; cursor: pointer; font-size: .9rem; }
+  .checkbox-row input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+
+  /* ── Toggle switch ── */
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .toggle-row:last-child { border-bottom: none; }
+  .toggle-label { font-size: .9rem; }
+  .toggle-label small { display: block; color: var(--muted); font-size: .8rem; margin-top: 2px; }
+  .toggle { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider { position: absolute; inset: 0; background: var(--border); border-radius: 12px; transition: .2s; cursor: pointer; }
+  .toggle-slider::before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+  .toggle input:checked + .toggle-slider { background: var(--accent); }
+  .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+  /* ── Filters ── */
+  .filter-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+  .filter-btn { background: var(--elevated); border: 1px solid var(--border); color: var(--muted); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: .85rem; transition: all .15s; }
+  .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .filter-btn:hover:not(.active) { border-color: var(--accent); color: var(--text); }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 18px; font-size: .875rem;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    transition: opacity .3s, transform .3s; z-index: 999;
+    opacity: 0; transform: translateY(8px); pointer-events: none;
+  }
+  #toast.show { opacity: 1; transform: translateY(0); }
+  #toast.success { border-color: var(--green); color: var(--green); }
+  #toast.error   { border-color: var(--red);   color: var(--red);   }
+
+  /* ── Misc ── */
+  .loader { text-align: center; color: var(--muted); padding: 40px; font-size: .9rem; }
+  .no-guild { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .no-guild .icon { font-size: 3rem; margin-bottom: 12px; }
+  .empty-state { text-align: center; padding: 40px; color: var(--muted); font-size: .9rem; }
+  .settings-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 20px; }
+  .settings-section h3 { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+  .dirty-bar { background: rgba(250,166,26,.15); border: 1px solid var(--yellow); border-radius: 6px; padding: 8px 14px; margin-bottom: 16px; color: var(--yellow); font-size: .875rem; display: none; }
+  .dirty-bar.show { display: flex; align-items: center; gap: 8px; }
+  .rank-bar { background: var(--border); border-radius: 4px; height: 8px; width: 100%; }
+  .rank-bar-fill { background: var(--accent); border-radius: 4px; height: 100%; transition: width .5s; }
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<header class="topbar">
+  <div class="topbar-logo">🤖 <span>TicketBot</span> Dashboard</div>
+  <div class="topbar-spacer"></div>
+  <select class="guild-select" id="guildSelect" onchange="onGuildChange()">
+    <option value="">— Select a server —</option>
+  </select>
+  <div class="user-chip">
+    <img id="userAvatar" src="" alt="avatar">
+    <span id="userName"></span>
+  </div>
+  <button class="btn-logout" onclick="location.href='/auth/logout'">Logout</button>
+</header>
+
+<!-- Layout -->
+<div class="layout">
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="nav-section">General</div>
+    <button class="nav-item active" data-page="overview"   onclick="showPage('overview', this)"><span class="nav-icon">📊</span> Overview</button>
+    <button class="nav-item"        data-page="tickets"    onclick="showPage('tickets', this)"><span class="nav-icon">🎫</span> Tickets</button>
+    <button class="nav-item"        data-page="commands"   onclick="showPage('commands', this)"><span class="nav-icon">📋</span> Commands</button>
+    <button class="nav-item"        data-page="slashcmds"  onclick="showPage('slashcmds', this)"><span class="nav-icon">⚡</span> Slash Cmds</button>
+
+    <div class="nav-section">Features</div>
+    <button class="nav-item"        data-page="moderation" onclick="showPage('moderation', this)"><span class="nav-icon">🛡️</span> Moderation</button>
+    <button class="nav-item"        data-page="welcome"    onclick="showPage('welcome', this)"><span class="nav-icon">👋</span> Welcome</button>
+    <button class="nav-item"        data-page="automod"    onclick="showPage('automod', this)"><span class="nav-icon">🤖</span> AutoMod</button>
+    <button class="nav-item"        data-page="levels"     onclick="showPage('levels', this)"><span class="nav-icon">⭐</span> Levels</button>
+    <button class="nav-item"        data-page="rolebtn"    onclick="showPage('rolebtn', this)"><span class="nav-icon">🎭</span> Role Buttons</button>
+
+    <div class="nav-section">Config</div>
+    <button class="nav-item"        data-page="settings"   onclick="showPage('settings', this)"><span class="nav-icon">⚙️</span> Settings</button>
+  </nav>
+
+  <!-- Main content -->
+  <main class="main">
+
+    <!-- ── Overview ── -->
+    <section class="page active" id="page-overview">
+      <div id="overviewContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
+    </section>
+
+    <!-- ── Tickets ── -->
+    <section class="page" id="page-tickets">
+      <div id="ticketsContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
+    </section>
+
+    <!-- ── Commands ── -->
+    <section class="page" id="page-commands">
+      <div id="commandsContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
+    </section>
+
+    <!-- ── Slash Commands ── -->
+    <section class="page" id="page-slashcmds">
+      <div id="slashcmdsContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
+    </section>
+
+    <!-- ── Moderation ── -->
+    <section class="page" id="page-moderation">
+      <div id="moderationContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
+    </section>
+
+    <!-- ── Welcome ── -->
+    <section class="page" id="page-welcome">
+      <div id="welcomeContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
+    </section>
+
+    <!-- ── AutoMod ── -->
+    <section class="page" id="page-automod">
+      <div id="automodContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
+    </section>
+
+    <!-- ── Levels ── -->
+    <section class="page" id="page-levels">
+      <div id="levelsContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
+    </section>
+
+    <!-- ── Role Buttons ── -->
+    <section class="page" id="page-rolebtn">
+      <div id="rolebtnContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
+    </section>
+
+    <!-- ── Settings ── -->
+    <section class="page" id="page-settings">
+      <div id="settingsContent"><div class="no-guild"><div class="icon">👈</div>Select a server to get started</div></div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+let currentGuild = null;
+let ticketFilter = 'all';
+let settingsDirty = false;
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+(async function init() {
+  const res = await fetch('/api/me').catch(() => null);
+  if (!res || !res.ok) return location.replace('/');
+
+  const { user, guilds } = await res.json();
+
+  const avatar = user.avatar
+    ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=64`
+    : `https://cdn.discordapp.com/embed/avatars/0.png`;
+  document.getElementById('userAvatar').src = avatar;
+  document.getElementById('userName').textContent = user.username;
+
+  const sel = document.getElementById('guildSelect');
+  guilds.forEach(g => {
+    const opt = document.createElement('option');
+    opt.value = g.id; opt.textContent = g.name;
+    sel.appendChild(opt);
+  });
+})();
+
+// ── Unsaved changes tracking ───────────────────────────────────────────────────
+function markDirty() {
+  settingsDirty = true;
+  document.getElementById('settingsDirtyBar').classList.add('show');
+}
+
+window.addEventListener('beforeunload', e => {
+  if (settingsDirty) { e.preventDefault(); e.returnValue = ''; }
+});
+
+// ── Navigation ─────────────────────────────────────────────────────────────────
+function showPage(name, btn) {
+  if (settingsDirty && document.getElementById('page-settings').classList.contains('active')) {
+    if (!confirm('You have unsaved changes in Settings. Leave without saving?')) return;
+    settingsDirty = false;
+  }
+
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  btn.classList.add('active');
+
+  if (currentGuild) loadPage(name);
+}
+
+function loadPage(name) {
+  if (name === 'overview')   loadOverview();
+  if (name === 'tickets')    loadTickets();
+  if (name === 'commands')   loadCommands();
+  if (name === 'slashcmds') loadSlashCommands();
+  if (name === 'moderation') loadModeration();
+  if (name === 'welcome')    loadWelcome();
+  if (name === 'automod')    loadAutomod();
+  if (name === 'levels')     loadLevels();
+  if (name === 'rolebtn')    loadRoleButtons();
+  if (name === 'settings')   loadSettings();
+}
+
+function onGuildChange() {
+  const sel = document.getElementById('guildSelect');
+  currentGuild = sel.value || null;
+  settingsDirty = false;
+  const active = document.querySelector('.nav-item.active');
+  if (currentGuild && active) loadPage(active.dataset.page);
+}
+
+// ── Overview ───────────────────────────────────────────────────────────────────
+async function loadOverview() {
+  const el = document.getElementById('overviewContent');
+  el.innerHTML = '<div class="loader">Loading…</div>';
+  const data = await api(`/api/guild/${currentGuild}/overview`);
+  if (!data) return;
+  const s = data.stats;
+  el.innerHTML = `
+    <h2>📊 Overview</h2>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="val">${s.total ?? 0}</div><div class="lbl">Total Tickets</div></div>
+      <div class="stat-card"><div class="val" style="color:var(--green)">${s.open_count ?? 0}</div><div class="lbl">Open</div></div>
+      <div class="stat-card"><div class="val" style="color:var(--red)">${s.closed_count ?? 0}</div><div class="lbl">Closed</div></div>
+      <div class="stat-card"><div class="val" style="color:var(--yellow)">${data.commandCount}</div><div class="lbl">Commands</div></div>
+    </div>`;
+}
+
+// ── Tickets ────────────────────────────────────────────────────────────────────
+async function loadTickets() {
+  const el = document.getElementById('ticketsContent');
+  el.innerHTML = '<div class="loader">Loading…</div>';
+  const url = `/api/guild/${currentGuild}/tickets` + (ticketFilter !== 'all' ? `?status=${ticketFilter}` : '');
+  const tickets = await api(url);
+  if (!tickets) return;
+
+  const rows = tickets.length
+    ? tickets.map(t => `
+        <tr>
+          <td>#${t.id}</td>
+          <td>${esc(t.subject)}</td>
+          <td><code>${t.user_id}</code></td>
+          <td><span class="badge badge-${t.status}">${t.status.toUpperCase()}</span></td>
+          <td>${new Date(t.created_at).toLocaleDateString()}</td>
+          <td><button class="btn btn-ghost btn-sm" onclick="viewTranscript(${t.id})">📄 Transcript</button></td>
+        </tr>`).join('')
+    : `<tr><td colspan="6"><div class="empty-state">No tickets found.</div></td></tr>`;
+
+  el.innerHTML = `
+    <h2>🎫 Tickets</h2>
+    <div class="filter-bar">
+      ${['all','open','closed'].map(f => `<button class="filter-btn${ticketFilter===f?' active':''}" onclick="setFilter('${f}')">${f.charAt(0).toUpperCase()+f.slice(1)}</button>`).join('')}
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Subject</th><th>User ID</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function setFilter(f) { ticketFilter = f; loadTickets(); }
+function viewTranscript(ticketId) { window.open(`/api/guild/${currentGuild}/tickets/${ticketId}/transcript`, '_blank'); }
+
+// ── Commands ───────────────────────────────────────────────────────────────────
+async function loadCommands() {
+  const el = document.getElementById('commandsContent');
+  el.innerHTML = '<div class="loader">Loading…</div>';
+  const cmds = await api(`/api/guild/${currentGuild}/commands`);
+  if (!cmds) return;
+
+  const rows = cmds.length
+    ? cmds.map(c => `
+        <tr>
+          <td><code>!${esc(c.name)}</code></td>
+          <td>${esc(c.response)}</td>
+          <td>${c.admin_only ? '<span class="badge badge-admin">ADMIN</span>' : '—'}</td>
+          <td>${new Date(c.created_at).toLocaleDateString()}</td>
+          <td><button class="btn btn-danger btn-sm" onclick="deleteCommand('${esc(c.name)}')">🗑 Remove</button></td>
+        </tr>`).join('')
+    : `<tr><td colspan="5"><div class="empty-state">No custom commands yet.</div></td></tr>`;
+
+  el.innerHTML = `
+    <h2>📋 Custom Commands</h2>
+    <div class="form-card">
+      <h3>Add Command</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Name (without !)</label>
+          <input type="text" id="cmdName" placeholder="rules" maxlength="32">
+        </div>
+        <div class="form-group" style="flex:2">
+          <label>Response</label>
+          <input type="text" id="cmdResponse" placeholder="Please read our #rules channel.">
+        </div>
+        <div class="form-group" style="flex:0;min-width:auto;justify-content:flex-end">
+          <label style="visibility:hidden">.</label>
+          <label class="checkbox-row"><input type="checkbox" id="cmdAdmin"> Admin only</label>
+        </div>
+        <div class="form-group" style="flex:0;min-width:auto;justify-content:flex-end">
+          <label style="visibility:hidden">.</label>
+          <button class="btn btn-primary" onclick="addCommand()">Add Command</button>
+        </div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Command</th><th>Response</th><th>Restriction</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+async function addCommand() {
+  const name     = document.getElementById('cmdName').value.trim();
+  const response = document.getElementById('cmdResponse').value.trim();
+  const adminOnly = document.getElementById('cmdAdmin').checked;
+  if (!name || !response) return toast('Name and response are required.', 'error');
+  const ok = await api(`/api/guild/${currentGuild}/commands`, 'POST', { name, response, admin_only: adminOnly });
+  if (ok) { toast('Command added!', 'success'); loadCommands(); }
+}
+
+async function deleteCommand(name) {
+  if (!confirm(`Remove !${name}?`)) return;
+  const ok = await api(`/api/guild/${currentGuild}/commands/${name}`, 'DELETE');
+  if (ok) { toast('Command removed.', 'success'); loadCommands(); }
+}
+
+// ── Slash Commands ─────────────────────────────────────────────────────────────
+const PROJECT_COMMANDS = new Set([
+  'ticket-setup','close','add-user','remove-user','ticket-stats',
+  'add-command','remove-command','commands',
+  'ban','kick','timeout','warn','warnings','clear-warn','purge',
+  'welcome-setup','button-roles','rank','leaderboard','set-level-role','automod',
+]);
+
+async function loadSlashCommands() {
+  const el = document.getElementById('slashcmdsContent');
+  el.innerHTML = '<div class="loader">Loading…</div>';
+  const cmds = await api(`/api/guild/${currentGuild}/slash-commands`);
+  if (!cmds) return;
+
+  const foreignCount = cmds.filter(c => !PROJECT_COMMANDS.has(c.name)).length;
+  const rows = cmds.length
+    ? cmds.map(c => {
+        const isProject = PROJECT_COMMANDS.has(c.name);
+        const scopeBadge = c.scope === 'global'
+          ? '<span class="badge" style="background:rgba(88,101,242,.2);color:#7289da">GLOBAL</span>'
+          : '<span class="badge" style="background:rgba(87,242,135,.1);color:var(--green)">GUILD</span>';
+        const typeBadge = isProject
+          ? '<span class="badge" style="background:rgba(87,242,135,.15);color:var(--green)">This Project</span>'
+          : '<span class="badge" style="background:rgba(237,66,69,.15);color:var(--red)">Foreign</span>';
+        const deleteBtn = isProject
+          ? `<button class="btn btn-ghost btn-sm" style="opacity:.45;cursor:not-allowed" disabled title="Protected">🔒 Protected</button>`
+          : `<button class="btn btn-danger btn-sm" onclick="deleteSlashCommand('${c.id}','${c.scope}','${esc(c.name)}')">🗑 Delete</button>`;
+        return `<tr>
+          <td><code>/${esc(c.name)}</code></td>
+          <td style="color:var(--muted);font-size:.8rem">${esc(c.description ?? '')}</td>
+          <td>${scopeBadge}</td><td>${typeBadge}</td>
+          <td style="color:var(--muted)">${c.options?.length ? c.options.length + ' option(s)' : '—'}</td>
+          <td>${deleteBtn}</td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="6"><div class="empty-state">No slash commands registered.</div></td></tr>`;
+
+  const bulkBtn = foreignCount > 0
+    ? `<button class="btn btn-danger" onclick="deleteAllForeign()">🧹 Delete All Foreign (${foreignCount})</button>`
+    : `<button class="btn btn-ghost" disabled style="opacity:.5">✅ No foreign commands</button>`;
+
+  el.innerHTML = `
+    <h2>⚡ Slash Commands</h2>
+    <p style="color:var(--muted);font-size:.875rem;margin-bottom:16px">Commands marked <strong style="color:var(--green)">This Project</strong> are re-registered on startup. <strong style="color:var(--red)">Foreign</strong> commands are leftovers from other projects.</p>
+    <div style="display:flex;gap:10px;margin-bottom:16px">
+      <button class="btn btn-ghost" onclick="loadSlashCommands()">🔄 Refresh</button>${bulkBtn}
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Command</th><th>Description</th><th>Scope</th><th>Type</th><th>Options</th><th>Actions</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+async function deleteSlashCommand(id, scope, name) {
+  if (!confirm(`Delete /${name}? This is permanent.`)) return;
+  const ok = await api(`/api/guild/${currentGuild}/slash-commands/${id}?scope=${scope}`, 'DELETE');
+  if (ok) { toast(`/${name} deleted.`, 'success'); loadSlashCommands(); }
+}
+
+async function deleteAllForeign() {
+  if (!confirm('Delete ALL foreign slash commands?')) return;
+  const cmds = await api(`/api/guild/${currentGuild}/slash-commands`);
+  if (!cmds) return;
+  const foreign = cmds.filter(c => !PROJECT_COMMANDS.has(c.name));
+  let deleted = 0;
+  for (const c of foreign) {
+    const ok = await api(`/api/guild/${currentGuild}/slash-commands/${c.id}?scope=${c.scope}`, 'DELETE');
+    if (ok) deleted++;
+  }
+  toast(`Deleted ${deleted} foreign command(s).`, 'success');
+  loadSlashCommands();
+}
+
+// ── Moderation ─────────────────────────────────────────────────────────────────
+async function loadModeration() {
+  const el = document.getElementById('moderationContent');
+  el.innerHTML = '<div class="loader">Loading…</div>';
+  const warnings = await api(`/api/guild/${currentGuild}/warnings`);
+  if (!warnings) return;
+
+  const rows = warnings.length
+    ? warnings.map(w => `
+        <tr>
+          <td>#${w.id}</td>
+          <td><code>${w.user_id}</code></td>
+          <td><code>${w.moderator_id}</code></td>
+          <td>${esc(w.reason)}</td>
+          <td>${new Date(w.created_at).toLocaleDateString()}</td>
+          <td><button class="btn btn-danger btn-sm" onclick="deleteWarning(${w.id})">🗑 Remove</button></td>
+        </tr>`).join('')
+    : `<tr><td colspan="6"><div class="empty-state">No warnings logged.</div></td></tr>`;
+
+  el.innerHTML = `
+    <h2>🛡️ Moderation — Warning Log</h2>
+    <p style="color:var(--muted);font-size:.875rem;margin-bottom:16px">Use <code>/warn</code> in Discord to add warnings. Use <code>/warnings @user</code> or <code>/clear-warn @user</code> to manage them.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>User ID</th><th>Moderator ID</th><th>Reason</th><th>Date</th><th>Actions</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+async function deleteWarning(id) {
+  if (!confirm(`Remove warning #${id}?`)) return;
+  const ok = await api(`/api/guild/${currentGuild}/warnings/${id}`, 'DELETE');
+  if (ok) { toast('Warning removed.', 'success'); loadModeration(); }
+}
+
+// ── Welcome ────────────────────────────────────────────────────────────────────
+async function loadWelcome() {
+  const el = document.getElementById('welcomeContent');
+  el.innerHTML = '<div class="loader">Loading…</div>';
+  const cfg = await api(`/api/guild/${currentGuild}/settings`);
+  if (!cfg) return;
+
+  el.innerHTML = `
+    <h2>👋 Welcome & Goodbye</h2>
+    <p style="color:var(--muted);font-size:.875rem;margin-bottom:20px">Placeholders: <code>{user}</code> <code>{username}</code> <code>{server}</code> <code>{membercount}</code></p>
+
+    <div class="settings-section">
+      <h3>Welcome Messages</h3>
+      <div class="toggle-row">
+        <div class="toggle-label">Enable welcome messages <small>Send a message when a member joins</small></div>
+        <label class="toggle"><input type="checkbox" id="wEnabled" ${cfg.welcome_enabled ? 'checked' : ''}><span class="toggle-slider"></span></label>
+      </div>
+      <div class="form-group" style="margin-top:16px">
+        <label>Welcome Channel ID</label>
+        <input type="text" id="wChannel" value="${esc(cfg.welcome_channel_id ?? '')}" placeholder="Channel ID">
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label>Welcome Message</label>
+        <textarea id="wMsg" rows="3">${esc(cfg.welcome_message ?? 'Welcome {user} to {server}!')}</textarea>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Goodbye Messages</h3>
+      <div class="toggle-row">
+        <div class="toggle-label">Enable goodbye messages <small>Send a message when a member leaves</small></div>
+        <label class="toggle"><input type="checkbox" id="gEnabled" ${cfg.goodbye_enabled ? 'checked' : ''}><span class="toggle-slider"></span></label>
+      </div>
+      <div class="form-group" style="margin-top:16px">
+        <label>Goodbye Channel ID</label>
+        <input type="text" id="gChannel" value="${esc(cfg.goodbye_channel_id ?? '')}" placeholder="Channel ID">
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label>Goodbye Message</label>
+        <textarea id="gMsg" rows="3">${esc(cfg.goodbye_message ?? 'Goodbye {user}, we will miss you!')}</textarea>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" onclick="saveWelcome()">💾 Save Welcome Settings</button>`;
+}
+
+async function saveWelcome() {
+  const updates = {
+    welcome_enabled:    document.getElementById('wEnabled').checked  ? 1 : 0,
+    welcome_channel_id: document.getElementById('wChannel').value.trim() || null,
+    welcome_message:    document.getElementById('wMsg').value,
+    goodbye_enabled:    document.getElementById('gEnabled').checked  ? 1 : 0,
+    goodbye_channel_id: document.getElementById('gChannel').value.trim() || null,
+    goodbye_message:    document.getElementById('gMsg').value,
+  };
+  const ok = await api(`/api/guild/${currentGuild}/settings`, 'PUT', updates);
+  if (ok) toast('Welcome settings saved!', 'success');
+}
+
+// ── AutoMod ────────────────────────────────────────────────────────────────────
+async function loadAutomod() {
+  const el = document.getElementById('automodContent');
+  el.innerHTML = '<div class="loader">Loading…</div>';
+  const cfg = await api(`/api/guild/${currentGuild}/automod`);
+  if (!cfg) return;
+
+  el.innerHTML = `
+    <h2>🤖 Auto-Moderation</h2>
+
+    <div class="settings-section">
+      <h3>Filters</h3>
+      <div class="toggle-row">
+        <div class="toggle-label">Anti-Spam <small>Delete messages if a user sends 5+ in 5 seconds</small></div>
+        <label class="toggle"><input type="checkbox" id="amSpam" ${cfg.anti_spam_enabled ? 'checked' : ''}><span class="toggle-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-label">Link Filter <small>Delete messages containing http/https links</small></div>
+        <label class="toggle"><input type="checkbox" id="amLinks" ${cfg.link_filter_enabled ? 'checked' : ''}><span class="toggle-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-label">Mention Filter <small>Delete messages with too many user/role mentions</small></div>
+        <label class="toggle"><input type="checkbox" id="amMentions" ${cfg.mention_filter_enabled ? 'checked' : ''}><span class="toggle-slider"></span></label>
+      </div>
+      <div class="form-group" style="max-width:200px;margin-top:16px">
+        <label>Max Mentions per Message</label>
+        <input type="number" id="amMaxMentions" value="${cfg.max_mentions ?? 5}" min="1" max="20">
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Bad Word Filter</h3>
+      <p style="color:var(--muted);font-size:.85rem;margin-bottom:12px">One word per line. Case-insensitive. Matches anywhere in the message.</p>
+      <textarea id="amBadWords" rows="6" placeholder="badword1&#10;badword2">${(cfg.bad_words ?? []).join('\n')}</textarea>
+    </div>
+
+    <button class="btn btn-primary" onclick="saveAutomod()">💾 Save AutoMod Settings</button>`;
+}
+
+async function saveAutomod() {
+  const badWords = document.getElementById('amBadWords').value
+    .split('\n').map(w => w.trim().toLowerCase()).filter(Boolean);
+  const updates = {
+    anti_spam_enabled:      document.getElementById('amSpam').checked     ? 1 : 0,
+    link_filter_enabled:    document.getElementById('amLinks').checked     ? 1 : 0,
+    mention_filter_enabled: document.getElementById('amMentions').checked  ? 1 : 0,
+    max_mentions:           parseInt(document.getElementById('amMaxMentions').value, 10),
+    bad_words:              badWords,
+  };
+  const ok = await api(`/api/guild/${currentGuild}/automod`, 'PUT', updates);
+  if (ok) toast('AutoMod settings saved!', 'success');
+}
+
+// ── Levels ─────────────────────────────────────────────────────────────────────
+async function loadLevels() {
+  const el = document.getElementById('levelsContent');
+  el.innerHTML = '<div class="loader">Loading…</div>';
+
+  const [lb, levelRoles] = await Promise.all([
+    api(`/api/guild/${currentGuild}/levels`),
+    api(`/api/guild/${currentGuild}/level-roles`),
+  ]);
+  if (!lb || !levelRoles) return;
+
+  const medals = ['🥇','🥈','🥉'];
+  const lbRows = lb.length
+    ? lb.map((r, i) => {
+        const xp = r.xp;
+        const level = calcLevel(xp);
+        const pct = Math.min(100, Math.floor((xp / Math.max(1, xpForLevel(level))) * 100));
+        return `<tr>
+          <td>${medals[i] ?? '#' + (i+1)}</td>
+          <td><code>${r.user_id}</code></td>
+          <td><strong>${level}</strong></td>
+          <td>${xp.toLocaleString()}</td>
+          <td style="min-width:120px"><div class="rank-bar"><div class="rank-bar-fill" style="width:${pct}%"></div></div></td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="5"><div class="empty-state">No XP data yet.</div></td></tr>`;
+
+  const roleRows = levelRoles.length
+    ? levelRoles.map(r => `
+        <tr>
+          <td><strong>Level ${r.level}</strong></td>
+          <td><code>${r.role_id}</code></td>
+          <td><button class="btn btn-danger btn-sm" onclick="deleteLevelRole(${r.level})">🗑 Remove</button></td>
+        </tr>`).join('')
+    : `<tr><td colspan="3"><div class="empty-state">No level roles configured.</div></td></tr>`;
+
+  el.innerHTML = `
+    <h2>⭐ Levels & XP</h2>
+
+    <div class="settings-section">
+      <h3>Leaderboard (Top 10)</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Rank</th><th>User ID</th><th>Level</th><th>Total XP</th><th>Progress</th></tr></thead>
+          <tbody>${lbRows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Level Role Rewards</h3>
+      <p style="color:var(--muted);font-size:.85rem;margin-bottom:12px">Roles are automatically assigned when a user reaches the specified level. Use Role IDs from Discord.</p>
+      <div class="form-row" style="margin-bottom:16px">
+        <div class="form-group" style="max-width:120px">
+          <label>Level</label>
+          <input type="number" id="lrLevel" placeholder="5" min="1">
+        </div>
+        <div class="form-group">
+          <label>Role ID</label>
+          <input type="text" id="lrRoleId" placeholder="0000000000000000000">
+        </div>
+        <div class="form-group" style="flex:0;min-width:auto;justify-content:flex-end">
+          <label style="visibility:hidden">.</label>
+          <button class="btn btn-primary" onclick="addLevelRole()">Add Role Reward</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Level</th><th>Role ID</th><th>Actions</th></tr></thead>
+          <tbody>${roleRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+async function addLevelRole() {
+  const level  = parseInt(document.getElementById('lrLevel').value, 10);
+  const roleId = document.getElementById('lrRoleId').value.trim();
+  if (!level || !roleId) return toast('Level and Role ID are required.', 'error');
+  const ok = await api(`/api/guild/${currentGuild}/level-roles`, 'POST', { level, role_id: roleId });
+  if (ok) { toast('Level role added!', 'success'); loadLevels(); }
+}
+
+async function deleteLevelRole(level) {
+  if (!confirm(`Remove role reward for level ${level}?`)) return;
+  const ok = await api(`/api/guild/${currentGuild}/level-roles/${level}`, 'DELETE');
+  if (ok) { toast('Level role removed.', 'success'); loadLevels(); }
+}
+
+// XP math helpers (mirrored from levels.js)
+function xpForLevel(level) { return 5 * level * level + 50 * level + 100; }
+function calcLevel(totalXp) {
+  let level = 0, acc = 0;
+  while (true) {
+    const needed = xpForLevel(level);
+    if (acc + needed > totalXp) return level;
+    acc += needed; level++;
+  }
+}
+
+// ── Role Buttons ──────────────────────────────────────────────────────────────
+async function loadRoleButtons() {
+  const el = document.getElementById('rolebtnContent');
+  el.innerHTML = '<div class="loader">Loading…</div>';
+  const panels = await api(`/api/guild/${currentGuild}/button-roles`);
+  if (!panels) return;
+
+  const cards = panels.length
+    ? panels.map(p => `
+        <div class="form-card" style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <strong>${esc(p.title)}</strong>
+              <div style="color:var(--muted);font-size:.85rem;margin-top:4px">${esc(p.description ?? '')}</div>
+              <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+                ${p.role_ids.map(id => `<span class="badge" style="background:var(--elevated);color:var(--text)"><code>${id}</code></span>`).join('')}
+              </div>
+              <div style="margin-top:8px;font-size:.8rem;color:var(--muted)">
+                Channel: <code>${p.channel_id}</code> · Created: ${new Date(p.created_at).toLocaleDateString()}
+              </div>
+            </div>
+            <button class="btn btn-danger btn-sm" onclick="deleteRolePanel(${p.id})">🗑 Delete Panel</button>
+          </div>
+        </div>`).join('')
+    : `<div class="empty-state">No role button panels created yet. Use <code>/button-roles</code> in Discord to create one.</div>`;
+
+  el.innerHTML = `
+    <h2>🎭 Role Button Panels</h2>
+    <p style="color:var(--muted);font-size:.875rem;margin-bottom:20px">
+      Create panels with <code>/button-roles</code> in Discord. Users click a button to toggle the role.
+      Deleting a panel here removes it from the database but does NOT delete the Discord message.
+    </p>
+    ${cards}`;
+}
+
+async function deleteRolePanel(id) {
+  if (!confirm('Delete this role panel from the database?')) return;
+  const ok = await api(`/api/guild/${currentGuild}/button-roles/${id}`, 'DELETE');
+  if (ok) { toast('Panel removed.', 'success'); loadRoleButtons(); }
+}
+
+// ── Settings ───────────────────────────────────────────────────────────────────
+async function loadSettings() {
+  const el = document.getElementById('settingsContent');
+  el.innerHTML = '<div class="loader">Loading…</div>';
+  const cfg = await api(`/api/guild/${currentGuild}/settings`);
+  if (!cfg) return;
+
+  settingsDirty = false;
+
+  el.innerHTML = `
+    <h2>⚙️ Settings</h2>
+    <div id="settingsDirtyBar" class="dirty-bar">⚠️ You have unsaved changes. Click "Save Settings" to apply them.</div>
+
+    <div class="settings-section">
+      <h3>Ticket Panel</h3>
+      <div class="form-group" style="margin-bottom:16px">
+        <label>Panel message</label>
+        <textarea id="sTicketMsg" rows="3" oninput="markDirty()">${esc(cfg.ticket_message ?? '')}</textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Max open tickets per user</label>
+          <input type="number" id="sMaxTickets" value="${cfg.max_tickets ?? 1}" min="1" max="20" oninput="markDirty()">
+        </div>
+        <div class="form-group">
+          <label>Auto-close after (hours, 0 = off)</label>
+          <input type="number" id="sAutoClose" value="${cfg.auto_close_hours ?? 0}" min="0" max="720" oninput="markDirty()">
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Channel & Category IDs</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Log Channel ID</label>
+          <input type="text" id="sLogChannel" value="${cfg.log_channel_id ?? ''}" placeholder="0000000000000000000" oninput="markDirty()">
+        </div>
+        <div class="form-group">
+          <label>Ticket Category ID</label>
+          <input type="text" id="sCategory" value="${cfg.ticket_category_id ?? ''}" placeholder="0000000000000000000" oninput="markDirty()">
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Support Roles <span style="color:var(--muted);font-weight:400;font-size:.8rem">(paste Discord Role IDs — up to 5)</span></h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Role 1 (primary)</label>
+          <input type="text" id="sRole1" value="${cfg.support_role_id ?? ''}" placeholder="0000000000000000000" oninput="markDirty()">
+        </div>
+        <div class="form-group">
+          <label>Role 2</label>
+          <input type="text" id="sRole2" value="${cfg.support_role_id_2 ?? ''}" placeholder="0000000000000000000" oninput="markDirty()">
+        </div>
+        <div class="form-group">
+          <label>Role 3</label>
+          <input type="text" id="sRole3" value="${cfg.support_role_id_3 ?? ''}" placeholder="0000000000000000000" oninput="markDirty()">
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:12px">
+        <div class="form-group">
+          <label>Role 4</label>
+          <input type="text" id="sRole4" value="${cfg.support_role_id_4 ?? ''}" placeholder="0000000000000000000" oninput="markDirty()">
+        </div>
+        <div class="form-group">
+          <label>Role 5</label>
+          <input type="text" id="sRole5" value="${cfg.support_role_id_5 ?? ''}" placeholder="0000000000000000000" oninput="markDirty()">
+        </div>
+        <div class="form-group"></div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>`;
+}
+
+async function saveSettings() {
+  const updates = {
+    ticket_message:    document.getElementById('sTicketMsg').value,
+    max_tickets:       parseInt(document.getElementById('sMaxTickets').value, 10),
+    auto_close_hours:  parseInt(document.getElementById('sAutoClose').value, 10),
+    log_channel_id:    document.getElementById('sLogChannel').value.trim() || null,
+    ticket_category_id: document.getElementById('sCategory').value.trim() || null,
+    support_role_id:   document.getElementById('sRole1').value.trim() || null,
+    support_role_id_2: document.getElementById('sRole2').value.trim() || null,
+    support_role_id_3: document.getElementById('sRole3').value.trim() || null,
+    support_role_id_4: document.getElementById('sRole4').value.trim() || null,
+    support_role_id_5: document.getElementById('sRole5').value.trim() || null,
+  };
+  const ok = await api(`/api/guild/${currentGuild}/settings`, 'PUT', updates);
+  if (ok) {
+    settingsDirty = false;
+    document.getElementById('settingsDirtyBar').classList.remove('show');
+    toast('Settings saved!', 'success');
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+async function api(url, method = 'GET', body = null) {
+  try {
+    const opts = { method, headers: {} };
+    if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    const res = await fetch(url, opts);
+    if (res.status === 401) { location.replace('/'); return null; }
+    if (!res.ok) { toast(`Error: ${res.status}`, 'error'); return null; }
+    const ct = res.headers.get('Content-Type') ?? '';
+    return ct.includes('application/json') ? res.json() : res.text();
+  } catch (e) {
+    toast('Network error', 'error');
+    return null;
+  }
+}
+
+let toastTimer;
+function toast(msg, type = 'success') {
+  const el = document.getElementById('toast');
+  el.textContent = (type === 'success' ? '✅ ' : '❌ ') + msg;
+  el.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
