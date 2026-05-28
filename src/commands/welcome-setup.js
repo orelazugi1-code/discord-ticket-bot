@@ -1,53 +1,66 @@
-const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ChannelType } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('welcome-setup')
-    .setDescription('Configure welcome and goodbye messages')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addChannelOption(o => o.setName('welcome_channel').setDescription('Channel for welcome messages').addChannelTypes(ChannelType.GuildText))
-    .addStringOption(o => o.setName('welcome_message').setDescription('Welcome message ({user}, {server}, {membercount})').setMaxLength(500))
-    .addChannelOption(o => o.setName('goodbye_channel').setDescription('Channel for goodbye messages').addChannelTypes(ChannelType.GuildText))
-    .addStringOption(o => o.setName('goodbye_message').setDescription('Goodbye message ({user}, {server})').setMaxLength(500))
-    .addBooleanOption(o => o.setName('welcome_enabled').setDescription('Enable/disable welcome messages'))
-    .addBooleanOption(o => o.setName('goodbye_enabled').setDescription('Enable/disable goodbye messages')),
+    .setDescription('Configure the welcome card system')
+    .addSubcommand(sub => sub
+      .setName('enable')
+      .setDescription('Enable welcome cards in a channel')
+      .addChannelOption(o => o.setName('channel').setDescription('Channel to send welcome cards in').setRequired(true))
+      .addStringOption(o => o.setName('message').setDescription('Welcome message (use {user}, {username}, {server}, {membercount})').setRequired(false))
+    )
+    .addSubcommand(sub => sub
+      .setName('disable')
+      .setDescription('Disable the welcome card system')
+    )
+    .addSubcommand(sub => sub
+      .setName('test')
+      .setDescription('Send a test welcome card for yourself')
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction, db) {
-    const updates = {};
-    const wCh  = interaction.options.getChannel('welcome_channel');
-    const wMsg = interaction.options.getString('welcome_message');
-    const gCh  = interaction.options.getChannel('goodbye_channel');
-    const gMsg = interaction.options.getString('goodbye_message');
-    const wOn  = interaction.options.getBoolean('welcome_enabled');
-    const gOn  = interaction.options.getBoolean('goodbye_enabled');
+    const sub = interaction.options.getSubcommand();
 
-    if (wCh  !== null) updates.welcome_channel_id = wCh.id;
-    if (wMsg !== null) updates.welcome_message     = wMsg;
-    if (gCh  !== null) updates.goodbye_channel_id  = gCh.id;
-    if (gMsg !== null) updates.goodbye_message      = gMsg;
-    if (wOn  !== null) updates.welcome_enabled      = wOn ? 1 : 0;
-    if (gOn  !== null) updates.goodbye_enabled      = gOn ? 1 : 0;
+    if (sub === 'enable') {
+      const channel = interaction.options.getChannel('channel');
+      const message = interaction.options.getString('message') || 'Welcome {user} to {server}! You are member #{membercount} 🎉';
 
-    if (Object.keys(updates).length === 0) {
-      const cfg = db.getGuildConfig(interaction.guild.id);
+      db.updateGuildConfig(interaction.guildId, {
+        welcome_channel_id: channel.id,
+        welcome_message:    message,
+        welcome_enabled:    1,
+      });
+
       return interaction.reply({
-        embeds: [new EmbedBuilder()
-          .setTitle('👋 Welcome / Goodbye Config')
-          .setColor(0x5865F2)
-          .addFields(
-            { name: 'Welcome Enabled',  value: cfg.welcome_enabled ? '✅ Yes' : '❌ No',      inline: true },
-            { name: 'Welcome Channel',  value: cfg.welcome_channel_id ? `<#${cfg.welcome_channel_id}>` : 'Not set', inline: true },
-            { name: 'Welcome Message',  value: cfg.welcome_message  ?? 'Default' },
-            { name: 'Goodbye Enabled',  value: cfg.goodbye_enabled  ? '✅ Yes' : '❌ No',      inline: true },
-            { name: 'Goodbye Channel',  value: cfg.goodbye_channel_id ? `<#${cfg.goodbye_channel_id}>` : 'Not set', inline: true },
-            { name: 'Goodbye Message',  value: cfg.goodbye_message  ?? 'Default' },
-          )
-          .setFooter({ text: 'Use options to change settings.' })],
+        content:
+          `✅ Welcome cards enabled in ${channel}!\n` +
+          `**Message:** \`${message}\`\n\n` +
+          `Available placeholders: \`{user}\` \`{username}\` \`{server}\` \`{membercount}\``,
         ephemeral: true,
       });
     }
 
-    db.updateGuildConfig(interaction.guild.id, updates);
-    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x57F287).setDescription('✅ Welcome/goodbye settings updated!')], ephemeral: true });
+    if (sub === 'disable') {
+      db.updateGuildConfig(interaction.guildId, { welcome_enabled: 0 });
+      return interaction.reply({ content: '✅ Welcome cards disabled.', ephemeral: true });
+    }
+
+    if (sub === 'test') {
+      await interaction.deferReply({ ephemeral: true });
+      try {
+        const { generateWelcomeCard } = require('../utils/welcomeCard');
+        const config = db.getGuildConfig(interaction.guildId);
+        const buf    = await generateWelcomeCard(interaction.member, config);
+        await interaction.editReply({
+          content: '🎴 Here is a preview of the welcome card:',
+          files: [{ attachment: buf, name: 'welcome-preview.png' }],
+        });
+      } catch (err) {
+        console.error('Welcome card test error:', err);
+        await interaction.editReply({ content: `❌ Failed to generate card: \`${err.message}\`` });
+      }
+    }
   },
 };

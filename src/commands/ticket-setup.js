@@ -1,71 +1,54 @@
 const {
-  SlashCommandBuilder,
-  PermissionFlagsBits,
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ChannelType,
+  SlashCommandBuilder, PermissionFlagsBits,
+  ActionRowBuilder, RoleSelectMenuBuilder,
 } = require('discord.js');
+const sessions = require('../utils/setupSessions');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('ticket-setup')
-    .setDescription('Set up the ticket panel in a channel')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addChannelOption(o => o.setName('channel').setDescription('Channel to post the panel in').setRequired(true).addChannelTypes(ChannelType.GuildText))
-    .addRoleOption(o => o.setName('support_role').setDescription('Primary support role that can see all tickets').setRequired(true))
-    .addRoleOption(o => o.setName('support_role_2').setDescription('Second support role'))
-    .addRoleOption(o => o.setName('support_role_3').setDescription('Third support role'))
-    .addRoleOption(o => o.setName('support_role_4').setDescription('Fourth support role'))
-    .addRoleOption(o => o.setName('support_role_5').setDescription('Fifth support role'))
-    .addChannelOption(o => o.setName('category').setDescription('Category to create ticket channels under').addChannelTypes(ChannelType.GuildCategory))
-    .addChannelOption(o => o.setName('log_channel').setDescription('Channel for open/close log events').addChannelTypes(ChannelType.GuildText))
-    .addStringOption(o => o.setName('message').setDescription('Panel embed description').setMaxLength(512)),
+    .setDescription('Create a ticket support panel in a channel')
+    .addChannelOption(o => o.setName('channel').setDescription('Channel to post the panel in').setRequired(true))
+    .addStringOption(o => o.setName('message').setDescription('Panel message text').setRequired(false))
+    .addStringOption(o => o.setName('title').setDescription('Panel embed title').setRequired(false))
+    .addChannelOption(o => o.setName('category').setDescription('Category to create tickets inside').setRequired(false))
+    .addIntegerOption(o => o.setName('max_tickets').setDescription('Max open tickets per user (default 1)').setMinValue(1).setMaxValue(10).setRequired(false))
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction, db) {
-    await interaction.deferReply({ ephemeral: true });
+    const channel    = interaction.options.getChannel('channel');
+    const message    = interaction.options.getString('message')    || 'Click the button below to open a support ticket.';
+    const title      = interaction.options.getString('title')      || '🎫 Support Tickets';
+    const category   = interaction.options.getChannel('category');
+    const maxTickets = interaction.options.getInteger('max_tickets') || 1;
 
-    const channel     = interaction.options.getChannel('channel');
-    const supportRole = interaction.options.getRole('support_role');
-    const category    = interaction.options.getChannel('category');
-    const logChannel  = interaction.options.getChannel('log_channel');
-    const message     = interaction.options.getString('message')
-      ?? '🎫 Click the button below to open a support ticket. Our team will assist you shortly.';
-
-    const updates = {
-      support_role_id:   supportRole.id,
-      support_role_id_2: interaction.options.getRole('support_role_2')?.id ?? null,
-      support_role_id_3: interaction.options.getRole('support_role_3')?.id ?? null,
-      support_role_id_4: interaction.options.getRole('support_role_4')?.id ?? null,
-      support_role_id_5: interaction.options.getRole('support_role_5')?.id ?? null,
-      ticket_message:    message,
-    };
-    if (category)   updates.ticket_category_id = category.id;
-    if (logChannel) updates.log_channel_id      = logChannel.id;
-    db.updateGuildConfig(interaction.guild.id, updates);
-
-    const embed = new EmbedBuilder()
-      .setTitle('🎫 Support Tickets')
-      .setDescription(message)
-      .setColor(0x5865F2)
-      .setFooter({ text: `${interaction.guild.name} Support` })
-      .setTimestamp();
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('ticket:open')
-        .setLabel('Open a Ticket')
-        .setEmoji('🎫')
-        .setStyle(ButtonStyle.Primary),
-    );
-
-    const panelMsg = await channel.send({ embeds: [embed], components: [row] });
-    db.updateGuildConfig(interaction.guild.id, {
-      panel_channel_id: channel.id,
-      panel_message_id: panelMsg.id,
+    const key = `${interaction.guildId}:${interaction.user.id}`;
+    sessions.set(key, {
+      type:        'ticket',
+      channelId:   channel.id,
+      guildId:     interaction.guildId,
+      message,
+      title,
+      categoryId:  category?.id ?? null,
+      maxTickets,
+      expiresAt:   Date.now() + 5 * 60_000,
     });
 
-    await interaction.editReply({ content: `✅ Ticket panel created in ${channel}!` });
+    const row = new ActionRowBuilder().addComponents(
+      new RoleSelectMenuBuilder()
+        .setCustomId(`tsetup:${key}`)
+        .setPlaceholder('Select support roles (you can pick multiple)...')
+        .setMinValues(0)
+        .setMaxValues(25),
+    );
+
+    await interaction.reply({
+      content:
+        `✅ Panel will be posted in ${channel}.\n\n` +
+        `**Select support roles** — members with these roles can view and reply to tickets.\n` +
+        `You can pick as many roles as you need (or leave empty for no role restriction):`,
+      components: [row],
+      ephemeral:  true,
+    });
   },
 };

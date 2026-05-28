@@ -88,33 +88,54 @@ client.once(Events.ClientReady, async c => {
 
 client.on(Events.GuildMemberAdd, async member => {
   const config = db.getGuildConfig(member.guild.id);
-  if (!config.welcome_enabled || !config.welcome_channel_id) return;
 
-  const ch = member.guild.channels.cache.get(config.welcome_channel_id);
-  if (!ch) return;
+  if (config.welcome_enabled && config.welcome_channel_id) {
+    const ch = member.guild.channels.cache.get(config.welcome_channel_id);
+    if (ch) {
+      try {
+        const { generateWelcomeCard } = require('./src/utils/welcomeCard');
+        const cardBuf = await generateWelcomeCard(member, config);
+        await ch.send({
+          content: `Hey ${member}! 👋`,
+          files: [{ attachment: cardBuf, name: 'welcome.png' }],
+        });
+      } catch (err) {
+        console.error('[WelcomeCard] Error generating card:', err.message);
+        const msg = (config.welcome_message || 'Welcome {user} to {server}!')
+          .replace('{user}',        `<@${member.id}>`)
+          .replace('{username}',    member.user.username)
+          .replace('{server}',      member.guild.name)
+          .replace('{membercount}', String(member.guild.memberCount));
+        await ch.send(msg).catch(console.error);
+      }
+    }
+  }
 
-  const msg = (config.welcome_message ?? 'Welcome {user} to {server}!')
-    .replace('{user}',        `<@${member.id}>`)
-    .replace('{username}',    member.user.username)
-    .replace('{server}',      member.guild.name)
-    .replace('{membercount}', String(member.guild.memberCount));
-
-  await ch.send(msg).catch(console.error);
+  if (config.auto_role_id) {
+    await member.roles.add(config.auto_role_id).catch(() => {});
+  }
 });
 
 client.on(Events.GuildMemberRemove, async member => {
   const config = db.getGuildConfig(member.guild.id);
   if (!config.goodbye_enabled || !config.goodbye_channel_id) return;
-
   const ch = member.guild.channels.cache.get(config.goodbye_channel_id);
   if (!ch) return;
-
-  const msg = (config.goodbye_message ?? 'Goodbye {user}, we will miss you!')
-    .replace('{user}',     member.user.username)
-    .replace('{username}', member.user.username)
-    .replace('{server}',   member.guild.name);
-
-  await ch.send(msg).catch(console.error);
+  try {
+    const { generateGoodbyeCard } = require('./src/utils/welcomeCard');
+    const cardBuf = await generateGoodbyeCard(member, config);
+    await ch.send({
+      content: `Goodbye ${member.user.username}! 👋`,
+      files: [{ attachment: cardBuf, name: 'goodbye.png' }],
+    });
+  } catch (err) {
+    console.error('[GoodbyeCard] Error generating card:', err.message);
+    const msg = (config.goodbye_message || 'Goodbye {user}, we will miss you!')
+      .replace('{user}',     member.user.username)
+      .replace('{username}', member.user.username)
+      .replace('{server}',   member.guild.name);
+    await ch.send(msg).catch(console.error);
+  }
 });
 
 // ── Interactions ──────────────────────────────────────────────────────────────
@@ -127,7 +148,7 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
-    if (interaction.isButton()) {
+    if (interaction.isButton() || interaction.isRoleSelectMenu() || interaction.isStringSelectMenu()) {
       const { handleButton } = require('./src/handlers/buttonHandler');
       await handleButton(interaction, db);
       return;
