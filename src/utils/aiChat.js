@@ -5,7 +5,27 @@ const {
 } = require('discord.js');
 const axios = require('axios');
 
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+// ── AI providers (tried in order; skips rate-limited ones) ──────────────────────
+
+const PROVIDERS = [
+  { name: 'Groq',       envKey: 'GROQ_API_KEY',       type: 'openai',  jsonMode: true,
+    url: 'https://api.groq.com/openai/v1/chat/completions',
+    model: 'llama-3.3-70b-versatile' },
+  { name: 'Gemini',     envKey: 'GEMINI_API_KEY',      type: 'gemini',  jsonMode: true,
+    url: 'https://generativelanguage.googleapis.com/v1beta/models',
+    model: 'gemini-2.0-flash' },
+  { name: 'Mistral',    envKey: 'MISTRAL_API_KEY',     type: 'openai',  jsonMode: false,
+    url: 'https://api.mistral.ai/v1/chat/completions',
+    model: 'mistral-small-latest' },
+  { name: 'OpenRouter', envKey: 'OPENROUTER_API_KEY',  type: 'openai',  jsonMode: false,
+    url: 'https://openrouter.ai/api/v1/chat/completions',
+    model: 'meta-llama/llama-3.3-70b-instruct:free' },
+];
+
+function isConfigured(provider) {
+  const v = process.env[provider.envKey];
+  return v && !v.startsWith('your_');
+}
 const OWNER_ID   = '1266854019767341107';
 const CONV_TTL   = 30 * 60 * 1000;
 
@@ -114,26 +134,78 @@ RULES
 
 // ── Groq ──────────────────────────────────────────────────────────────────────
 
-async function callGroq(systemPrompt, history, userMessage) {
-  const resp = await axios.post(
-    'https://api.groq.com/openai/v1/chat/completions',
-    {
-      model:           GROQ_MODEL,
-      temperature:     0.4,
-      max_tokens:      1024,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...history,
-        { role: 'user', content: userMessage },
-      ],
-    },
-    {
-      headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
-      timeout: 25_000,
-    },
-  );
+async function callOpenAiCompat(provider, key, systemPrompt, history, userMessage) {
+  const body = {
+    model:       provider.model,
+    temperature: 0.4,
+    max_tokens:  1024,
+    messages:    [{ role: 'system', content: systemPrompt }, ...history, { role: 'user', content: userMessage }],
+  };
+  if (provider.jsonMode) body.response_format = { type: 'json_object' };
+
+  const headers = { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
+  if (provider.name === 'OpenRouter') {
+    headers['HTTP-Referer'] = 'https://discord.com';
+    headers['X-Title']      = 'Discord Server Manager Bot';
+  }
+
+  const resp = await axios.post(provider.url, body, { headers, timeout: 30_000 });
   return resp.data.choices[0].message.content;
+}
+
+async function callGemini(provider, key, systemPrompt, history, userMessage) {
+  const url = `${provider.url}/${provider.model}:generateContent?key=${key}`;
+
+  // Gemini needs strict alternating user/model turns — merge consecutive same-role msgs
+  const contents = [];
+  for (const m of [...history, { role: 'user', content: userMessage }]) {
+    const role = m.role === 'assistant' ? 'model' : 'user';
+    const last = contents[contents.length - 1];
+    if (last && last.role === role) {
+      last.parts[0].text += '\n' + m.content; // merge
+    } else {
+      contents.push({ role, parts: [{ text: m.content }] });
+    }
+  }
+
+  const resp = await axios.post(url, {
+    contents,
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    generationConfig:  { temperature: 0.4, maxOutputTokens: 1024, responseMimeType: 'application/json' },
+  }, { headers: { 'Content-Type': 'application/json' }, timeout: 30_000 });
+
+  return resp.data.candidates[0].content.parts[0].text;
+}
+
+async function callAiWithFallback(systemPrompt, history, userMessage) {
+  let lastError;
+
+  for (const provider of PROVIDERS) {
+    if (!isConfigured(provider)) continue;
+    try {
+      const text = provider.type === 'gemini'
+        ? await callGemini(provider, process.env[provider.envKey], systemPrompt, history, userMessage)
+        : await callOpenAiCompat(provider, process.env[provider.envKey], systemPrompt, history, userMessage);
+      if (PROVIDERS.indexOf(provider) > 0) console.log(`[aiChat] Using fallback provider: ${provider.name}`);
+      return text;
+    } catch (e) {
+      const status = e.response?.status;
+      const msg    = (e.response?.data?.error?.message || e.response?.data?.error?.status || e.message || '').toLowerCase();
+      const isRate = status === 429 || status === 503 || msg.includes('rate') || msg.includes('quota') || msg.includes('exhausted');
+      if (isRate) {
+        console.warn(`[aiChat] ${provider.name} rate-limited — trying next provider`);
+        lastError = e; continue;
+      }
+      console.error(`[aiChat] ${provider.name} error (${status}): ${e.response?.data?.error?.message ?? e.message}`);
+      lastError = e; continue;
+    }
+  }
+
+  throw new Error(
+    lastError
+      ? `All AI providers unavailable. Last: ${lastError.response?.data?.error?.message ?? lastError.message}`
+      : 'No AI provider configured. Set GROQ_API_KEY, GEMINI_API_KEY, MISTRAL_API_KEY, or OPENROUTER_API_KEY.'
+  );
 }
 
 function parseResponse(raw) {
@@ -446,7 +518,7 @@ async function sendReply(message, text) {
 
 async function runAiRound(convKey, guild, userText, db, isOwner) {
   const conv = getConv(convKey);
-  const raw  = await callGroq(buildSystemPrompt(guild, isOwner), conv.messages, userText);
+  const raw  = await callAiWithFallback(buildSystemPrompt(guild, isOwner), conv.messages, userText);
   const { reply, actions } = parseResponse(raw);
 
   let extra = '';
@@ -465,7 +537,7 @@ async function runAiRound(convKey, guild, userText, db, isOwner) {
 
 async function handleGuildMessage(message, db) {
   if (!message.guild) return;
-  if (!process.env.GROQ_API_KEY) return message.reply({ content: '❌ `GROQ_API_KEY` not configured.', ephemeral: true });
+  if (!PROVIDERS.some(isConfigured)) return message.reply({ content: '❌ No AI provider configured. Set GROQ_API_KEY, GEMINI_API_KEY, MISTRAL_API_KEY, or OPENROUTER_API_KEY.', ephemeral: true });
 
   const isOwner = message.author.id === OWNER_ID;
   // Owner bypasses the admin check; everyone else must be Administrator
@@ -492,7 +564,7 @@ async function handleGuildMessage(message, db) {
 // ── DM handler ────────────────────────────────────────────────────────────────
 
 async function handleDmMessage(message, client, db) {
-  if (!process.env.GROQ_API_KEY) return message.reply({ content: '❌ `GROQ_API_KEY` not configured.' });
+  if (!PROVIDERS.some(isConfigured)) return message.reply({ content: '❌ No AI provider configured. Set GROQ_API_KEY, GEMINI_API_KEY, MISTRAL_API_KEY, or OPENROUTER_API_KEY.' });
 
   const userId   = message.author.id;
   const isOwner  = userId === OWNER_ID;
