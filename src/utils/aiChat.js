@@ -36,7 +36,7 @@ const conversations = new Map();
 function getConv(key) {
   const c = conversations.get(key);
   if (!c || Date.now() > c.expiresAt) {
-    const fresh = { messages: [], guildId: null, expiresAt: Date.now() + CONV_TTL };
+    const fresh = { messages: [], guildId: null, lang: 'en', expiresAt: Date.now() + CONV_TTL };
     conversations.set(key, fresh);
     return fresh;
   }
@@ -54,9 +54,13 @@ function clearConv(guildId, userId) {
   conversations.delete(`guild:${guildId}:${userId}`);
 }
 
+function detectLang(text) {
+  return /[\u0590-\u05FF]/.test(text) ? 'he' : 'en';
+}
+
 // ── System prompt ─────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(guild, isOwner) {
+function buildSystemPrompt(guild, isOwner, lang = 'en') {
   const cats = [...guild.channels.cache.values()]
     .filter(c => c.type === ChannelType.GuildCategory)
     .sort((a, b) => a.position - b.position).slice(0, 40)
@@ -82,7 +86,9 @@ function buildSystemPrompt(guild, isOwner) {
 
 9. You are talking to the BOT OWNER — full access, execute any request immediately.` : '';
 
-  return `You are a smart, action-taking Discord server manager AI for "${guild.name}".
+  return `${lang === 'he' ? '🇮🇱 שפה: עברית. השב תמיד בעברית. כל תוויות הכפתורים בעברית.' : '🌐 Language: English.'}
+
+You are a smart, action-taking Discord server manager AI for "${guild.name}".
 
 ━━━━ CRITICAL: HOW ACTIONS WORK ━━━━
 The ONLY way things get done is through the "actions" array in your JSON.
@@ -152,6 +158,12 @@ Forms:
 Role panels:
   {"type":"setup_button_panel","channel":"name","title":"🎭 Roles","description":"Pick a role","buttons":[{"label":"🎮 Gamer","role":"exact role name"}]}
 ${ownerSection}
+
+━━━━ INTERACTIVE UI — use these instead of asking in text ━━━━
+  {"type":"ask_channel","prompt":"Which channel for the panel?","purpose":"ticket_ch"}
+  {"type":"ask_roles","prompt":"Which roles should have access?","purpose":"support_roles"}
+  {"type":"ask_confirm","description":"Will create in #support-tickets","fields":[{"name":"Channel","value":"#support-tickets","inline":true}]}
+  {"type":"start_form_wizard","title":"Application Form"}
 
 ━━━━ RULES ━━━━
 1. Respond in the SAME LANGUAGE as the admin (Hebrew → Hebrew, English → English).
@@ -301,10 +313,47 @@ function safeHex(c) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-async function executeActions(guild, actions, db, isOwner) {
+async function handleWizardAction(act, guild, channel, userId, done, fails) {
+  if (!channel) { fails.push(act.type + ': no reply channel'); return false; }
+  const conv = getConv(`guild:${guild.id}:${userId}`);
+  const lang = conv.lang || 'en';
+  const wiz  = require('./wizard');
+  const existing = wiz.getW(guild.id, userId) || { data: {} };
+
+  if (act.type === 'ask_channel') {
+    wiz.setW(guild.id, userId, { ...existing, lang, pendingField: act.purpose || 'channel', pendingPrompt: act.prompt });
+    await channel.send(wiz.chPickerMsg(guild, guild.id, userId, lang, act.prompt));
+    return true;
+  }
+  if (act.type === 'ask_roles') {
+    wiz.setW(guild.id, userId, { ...existing, lang, pendingField: act.purpose || 'roles', pendingPrompt: act.prompt });
+    await channel.send(wiz.rolePickerMsg(guild.id, userId, lang, act.prompt));
+    return true;
+  }
+  if (act.type === 'ask_confirm') {
+    wiz.setW(guild.id, userId, { ...existing, lang, pendingField: 'confirm' });
+    await channel.send(wiz.confirmMsg(guild.id, userId, lang, act.description, act.fields));
+    return true;
+  }
+  if (act.type === 'start_form_wizard') {
+    wiz.setW(guild.id, userId, { type: 'form', lang, pendingField: 'questions', data: { title: act.title || '', questions: [] } });
+    await channel.send(wiz.formBuilderMsg(guild.id, userId, lang, act.title, []));
+    return true;
+  }
+  return false;
+}
+
+async function executeActions(guild, actions, db, isOwner, channel, userId) {
   const done = [], fails = [];
 
   for (const act of actions) {
+    // Wizard UI actions — send interactive component then stop processing
+    if (['ask_channel','ask_roles','ask_confirm','start_form_wizard'].includes(act.type)) {
+      const sent = await handleWizardAction(act, guild, channel, userId, done, fails);
+      if (sent) break;
+      continue;
+    }
+
     // Block dangerous owner-only actions for non-owners
     if (['clone_server', 'list_guilds'].includes(act.type) && !isOwner) {
       fails.push(`"${act.type}" is restricted to the bot owner`);
@@ -597,16 +646,37 @@ async function sendReply(message, text) {
 
 // ── Shared AI round ───────────────────────────────────────────────────────────
 
-async function runAiRound(convKey, guild, userText, db, isOwner) {
+async function runAiRound(convKey, guild, userText, db, isOwner, channel, userId) {
   const conv = getConv(convKey);
-  const raw  = await callAiWithFallback(buildSystemPrompt(guild, isOwner), conv.messages, userText);
+  // Detect and store language on first meaningful message
+  if (conv.lang === 'en') { const dl = detectLang(userText); if (dl !== 'en') conv.lang = dl; }
+  const raw  = await callAiWithFallback(buildSystemPrompt(guild, isOwner, conv.lang || 'en'), conv.messages, userText);
   const { reply, actions } = parseResponse(raw);
 
   let extra = '';
   if (actions.length) {
-    const { done, fails } = await executeActions(guild, actions, db, isOwner);
+    const { done, fails } = await executeActions(guild, actions, db, isOwner, channel, userId);
     if (done.length)  extra += '\n\n✅ ' + done.join('\n✅ ');
     if (fails.length) extra += '\n\n⚠️ ' + fails.join('\n⚠️ ');
+
+    // Auto-retry once when every action failed (and no wizard component was sent)
+    const allFailed = done.length === 0 && fails.length > 0;
+    const hasWizard = actions.some(a => ['ask_channel','ask_roles','ask_confirm','start_form_wizard'].includes(a.type));
+    if (allFailed && !hasWizard) {
+      try {
+        const retryInput = 'The following actions all failed: ' + fails.join(', ') + '. Try a completely different approach automatically without asking the user.';
+        const retryRaw   = await callAiWithFallback(buildSystemPrompt(guild, isOwner, conv.lang || 'en'),
+          [...conv.messages, { role: 'user', content: userText }, { role: 'assistant', content: reply }], retryInput);
+        const retryP = parseResponse(retryRaw);
+        if (retryP.actions.length > 0) {
+          const r2 = await executeActions(guild, retryP.actions, db, isOwner, channel, userId);
+          if (r2.done.length > 0) {
+            extra += '\n\n🔄 *Auto-retried:* \n✅ ' + r2.done.join('\n✅ ');
+            if (r2.fails.length) extra += '\n⚠️ ' + r2.fails.join('\n⚠️ ');
+          }
+        }
+      } catch (e) { console.error('[aiChat] auto-retry:', e.message); }
+    }
   }
 
   pushMsg(convKey, 'user',      userText);
@@ -632,7 +702,7 @@ async function handleGuildMessage(message, db) {
   message.channel.sendTyping().catch(() => {});
 
   try {
-    const fullReply = await runAiRound(convKey, message.guild, userText, db, isOwner);
+    const fullReply = await runAiRound(convKey, message.guild, userText, db, isOwner, message.channel, message.author.id);
     await sendReply(message, fullReply);
   } catch (e) {
     console.error('[aiChat] guild error:', e.response?.data?.error?.message ?? e.message);
@@ -683,7 +753,7 @@ async function handleDmMessage(message, client, db) {
     const userText = message.content.trim();
     if (!userText) return;
 
-    const fullReply = await runAiRound(convKey, guild, userText, db, isOwner);
+    const fullReply = await runAiRound(convKey, guild, userText, db, isOwner, message.channel, userId);
     await sendReply(message, fullReply);
   } catch (e) {
     console.error('[aiChat] DM error:', e.response?.data?.error?.message ?? e.message);
@@ -693,4 +763,32 @@ async function handleDmMessage(message, client, db) {
   }
 }
 
-module.exports = { handleGuildMessage, handleDmMessage, clearConv };
+async function continueConvFromWizard(interaction, db, userInput, guildId, userId) {
+  const convKey = `guild:${guildId}:${userId}`;
+  const guild   = interaction.guild;
+  const isOwner = userId === '1266854019767341107';
+  const conv    = getConv(convKey);
+
+  const typingPulse = setInterval(() => interaction.channel.sendTyping().catch(() => {}), 9000);
+  interaction.channel.sendTyping().catch(() => {});
+
+  try {
+    const fullReply = await runAiRound(convKey, guild, userInput, db, isOwner, interaction.channel, userId);
+    const lines = fullReply.split('\n');
+    let chunk = '', first = true;
+    for (const line of lines) {
+      if ((chunk + '\n' + line).length > 1990) {
+        await interaction.channel.send({ content: chunk });
+        chunk = line; first = false;
+      } else { chunk = chunk ? chunk + '\n' + line : line; }
+    }
+    if (chunk) await interaction.channel.send({ content: chunk });
+  } catch (e) {
+    console.error('[aiChat] wizard continuation:', e.message);
+    await interaction.channel.send({ content: `❌ AI error: \`${e.message}\`` }).catch(() => {});
+  } finally {
+    clearInterval(typingPulse);
+  }
+}
+
+module.exports = { handleGuildMessage, handleDmMessage, clearConv, continueConvFromWizard };

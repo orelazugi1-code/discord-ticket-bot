@@ -148,6 +148,18 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
+    // ── Wizard interactions (AI chat interactive components) ────────────────────
+    if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isRoleSelectMenu()) && interaction.customId?.startsWith('wiz:')) {
+      const { handleWizardInteraction } = require('./src/utils/wizard');
+      await handleWizardInteraction(interaction, db);
+      return;
+    }
+    if (interaction.isModalSubmit() && interaction.customId?.startsWith('wizmod:')) {
+      const { handleWizardModal } = require('./src/utils/wizard');
+      await handleWizardModal(interaction, db);
+      return;
+    }
+
     if (interaction.isButton() || interaction.isRoleSelectMenu() || interaction.isStringSelectMenu()) {
       const { handleButton } = require('./src/handlers/buttonHandler');
       await handleButton(interaction, db);
