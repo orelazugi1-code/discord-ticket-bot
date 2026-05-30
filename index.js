@@ -169,7 +169,24 @@ client.on(Events.InteractionCreate, async interaction => {
 // ── Messages ──────────────────────────────────────────────────────────────────
 
 client.on(Events.MessageCreate, async message => {
-  if (message.author.bot || !message.guild) return;
+  if (message.author.bot) return;
+
+  // ── DM: forward to AI chat ─────────────────────────────────────────────────
+  if (!message.guild) {
+    const { handleDmMessage } = require('./src/utils/aiChat');
+    await handleDmMessage(message, client, db).catch(console.error);
+    return;
+  }
+
+  // ── AI chat channel or bot mention ───────────────────────────────────────────
+  const aiCfg      = db.getGuildConfig(message.guild.id);
+  const isAiCh     = aiCfg.ai_chat_channel_id && message.channel.id === aiCfg.ai_chat_channel_id;
+  const isMentioned = message.mentions.users.has(client.user.id);
+  if (isAiCh || isMentioned) {
+    const { handleGuildMessage } = require('./src/utils/aiChat');
+    await handleGuildMessage(message, db).catch(console.error);
+    return;
+  }
 
   // Record messages inside open tickets for transcripts
   const ticket = db.getTicketByChannel(message.channel.id);
