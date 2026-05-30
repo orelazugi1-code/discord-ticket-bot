@@ -608,18 +608,46 @@ async function handleTicketCategoryBtn(interaction, db, sessions) {
   if (ns === 'tc_done') {
     const cats = session.categories || [];
     try { db.clearTicketCategories(session.guildId); } catch {}
+    const createdCats = [];
     if (cats.length > 0) {
       try { db.setTicketQuestions(session.guildId, []); } catch {}
       for (let i = 0; i < cats.length; i++) {
         const catId = db.createTicketCategory(session.guildId, cats[i].name, i);
+        createdCats.push({ id: catId, name: cats[i].name });
         if (cats[i].questions.length > 0) db.setCategoryQuestions(session.guildId, catId, cats[i].questions);
+      }
+      // Update the existing ticket panel to show a select menu instead of a button
+      try {
+        const cfg      = db.getGuildConfig(session.guildId);
+        const panelCh  = cfg.panel_channel_id  ? interaction.guild.channels.cache.get(cfg.panel_channel_id)  : null;
+        const panelMsg = cfg.panel_message_id  && panelCh
+          ? await panelCh.messages.fetch(cfg.panel_message_id).catch(() => null)
+          : null;
+        if (panelMsg && createdCats.length > 0) {
+          const select = new StringSelectMenuBuilder()
+            .setCustomId('ticket:category_select')
+            .setPlaceholder('Select a ticket type...')
+            .setMinValues(1).setMaxValues(1)
+            .addOptions(createdCats.map(cat =>
+              new StringSelectMenuOptionBuilder()
+                .setLabel(cat.name.substring(0, 100))
+                .setValue(String(cat.id))
+                .setEmoji('🎫')
+            ));
+          await panelMsg.edit({
+            embeds:     panelMsg.embeds,
+            components: [new ActionRowBuilder().addComponents(select)],
+          });
+        }
+      } catch (err) {
+        console.error('[tc_done] panel update failed:', err.message);
       }
     }
     sessions.delete(key);
     const catList = cats.map((c, i) => `**${i + 1}.** ${c.name}`).join('\n') || '_None_';
     return interaction.update({
       content: cats.length > 0
-        ? `✅ **Ticket setup complete!** Saved **${cats.length}** categor${cats.length !== 1 ? 'ies' : 'y'}:\n${catList}\n\nUsers will see a category selection menu when opening a ticket.`
+        ? `✅ **Ticket setup complete!** Saved **${cats.length}** categor${cats.length !== 1 ? 'ies' : 'y'}:\n${catList}\n\nThe ticket panel has been updated with a category select menu.`
         : `✅ **Ticket setup complete!** No categories saved. Using default form.`,
       components: [],
     });

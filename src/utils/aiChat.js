@@ -1,10 +1,12 @@
 const {
   ChannelType, PermissionFlagsBits,
   EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
+  StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
 } = require('discord.js');
 const axios = require('axios');
 
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const OWNER_ID   = '1266854019767341107';
 const CONV_TTL   = 30 * 60 * 1000;
 
 // ── Conversation store ────────────────────────────────────────────────────────
@@ -34,12 +36,11 @@ function clearConv(guildId, userId) {
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(guild) {
+function buildSystemPrompt(guild, isOwner) {
   const cats = [...guild.channels.cache.values()]
     .filter(c => c.type === ChannelType.GuildCategory)
     .sort((a, b) => a.position - b.position).slice(0, 40)
-    .map(c => `  • "${c.name}"`)
-    .join('\n') || '  (none)';
+    .map(c => `  • "${c.name}"`).join('\n') || '  (none)';
 
   const chs = [...guild.channels.cache.values()]
     .filter(c => c.type === ChannelType.GuildText || c.type === ChannelType.GuildVoice)
@@ -50,10 +51,20 @@ function buildSystemPrompt(guild) {
   const roles = [...guild.roles.cache.values()]
     .filter(r => !r.managed && r.name !== '@everyone')
     .sort((a, b) => b.position - a.position).slice(0, 40)
-    .map(r => `  • "${r.name}"`)
-    .join('\n') || '  (none)';
+    .map(r => `  • "${r.name}"`).join('\n') || '  (none)';
 
-  return `You are a smart Discord server manager AI for "${guild.name}". Help admins manage their server through natural conversation.
+  const ownerActions = isOwner ? `
+Owner-only:
+  {"type":"clone_server"}                                     — create a discord.new template of this server
+  {"type":"list_guilds"}                                      — list all servers the bot is in
+  {"type":"create_embed","channel":"name","title":"…","description":"…","color":"#HEX","fields":[{"name":"…","value":"…","inline":true}],"footer":"…","thumbnail":"url","image":"url"}` : '';
+
+  const ownerRules = isOwner ? `
+9. You are talking to the BOT OWNER. Give them full access including dangerous commands.
+10. The owner can request any custom creation: embeds, panels, buttons, anything. Use create_embed for rich embeds.
+11. For clone_server and list_guilds, execute immediately without asking for confirmation.` : '';
+
+  return `You are a smart Discord server manager AI for "${guild.name}". Help admins manage their server through natural conversation. You call the bot's EXISTING systems rather than building things from scratch — this makes everything reliable and professional.
 
 SERVER STATE
 Categories:
@@ -65,28 +76,40 @@ ${chs}
 Roles:
 ${roles}
 
-RESPONSE FORMAT — return ONLY a JSON object, no text outside it:
+RESPONSE FORMAT — return ONLY a JSON object, nothing outside it:
 {"reply":"…","actions":[]}
 
-ACTIONS:
-{"type":"create_category","name":"🎮 Gaming"}
-{"type":"create_text_channel","name":"📢-announcements","category":"exact category name or null","topic":"optional"}
-{"type":"create_voice_channel","name":"🔊 General VC","category":"exact category name or null"}
-{"type":"delete_channel","name":"exact channel name from the list above"}
-{"type":"delete_category","name":"exact category name from the list above"}
-{"type":"create_role","name":"🎮 Gamer","color":"#FF5733","hoist":true,"mentionable":true}
-{"type":"delete_role","name":"exact role name"}
-{"type":"setup_ticket","channel":"exact channel name","support_roles":["exact role name"],"title":"🎫 Support","message":"Click to open","questions":["Q1"]}
+AVAILABLE ACTIONS:
+Channels/Categories:
+  {"type":"create_category","name":"🎮 Gaming"}
+  {"type":"create_text_channel","name":"💬-general","category":"exact category name or null","topic":"optional"}
+  {"type":"create_voice_channel","name":"🔊 General VC","category":"exact category name or null"}
+  {"type":"delete_channel","name":"exact channel name from list"}
+  {"type":"delete_category","name":"exact category name from list"}
+
+Roles:
+  {"type":"create_role","name":"🎮 Gamer","color":"#FF5733","hoist":true,"mentionable":false}
+  {"type":"delete_role","name":"exact role name from list"}
+
+Ticket system (uses existing ticket infrastructure):
+  {"type":"setup_ticket","channel":"channel-name","support_roles":["Role1","Role2"],"title":"🎫 Support","message":"Click to open a ticket","questions":["What is your issue?"]}
+
+Form system (uses existing form infrastructure):
+  {"type":"setup_form","channel":"channel-name","log_channel":"staff-logs or null","title":"Form Title","description":"Description","button_label":"Apply Now","questions":["Your name?","Why join?"],"mode":"modal"}
+
+Button role panel (uses existing role panel infrastructure):
+  {"type":"setup_button_panel","channel":"channel-name","title":"🎭 Self Roles","description":"Pick your roles","buttons":[{"label":"🎮 Gamer","role":"exact role name"}]}
+${ownerActions}
 
 RULES
 1. Reply in the SAME LANGUAGE as the admin (Hebrew → Hebrew, English → English).
 2. Channel/category names MUST include a thematic emoji (e.g. "🎮 Gaming", "#💬-general").
-3. When specifying channel, category, or role names in actions use the EXACT name shown in the server state above.
-4. NEVER perform delete actions unless the admin clearly uses a word like "delete", "remove", or "מחק".
-5. When you need clarification, ASK and list existing options from the server state.
+3. In actions use the EXACT name from the server state list above.
+4. NEVER delete unless the admin explicitly says "delete" / "remove" / "מחק" / "הסר".
+5. When you need info (which channel? which roles?) ASK and show the options from the server state.
 6. You may return multiple actions in one response.
-7. For ticket setup: collect channel + support roles + optional questions before acting.
-8. Return ONLY valid JSON — nothing outside the JSON object.`;
+7. Ticket setup uses the bot's built-in ticket system — it will appear as a proper ticket panel.
+8. Form setup uses the bot's built-in form system — questions, log channel, approval mode.${ownerRules}`;
 }
 
 // ── Groq ──────────────────────────────────────────────────────────────────────
@@ -98,7 +121,7 @@ async function callGroq(systemPrompt, history, userMessage) {
       model:           GROQ_MODEL,
       temperature:     0.4,
       max_tokens:      1024,
-      response_format: { type: 'json_object' }, // guarantees valid JSON — fixes raw JSON showing in chat
+      response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: systemPrompt },
         ...history,
@@ -113,74 +136,55 @@ async function callGroq(systemPrompt, history, userMessage) {
   return resp.data.choices[0].message.content;
 }
 
-// With response_format:json_object the model always returns valid JSON,
-// so JSON.parse will succeed. The fallback handles edge cases.
 function parseResponse(raw) {
   try {
-    const parsed = JSON.parse(raw);
-    return {
-      reply:   String(parsed.reply   || '✅'),
-      actions: Array.isArray(parsed.actions) ? parsed.actions : [],
-    };
+    const p = JSON.parse(raw);
+    return { reply: String(p.reply || '✅'), actions: Array.isArray(p.actions) ? p.actions : [] };
   } catch {
-    // Fallback: strip fences and find outermost {}
     try {
       const s = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
       const a = s.indexOf('{'), b = s.lastIndexOf('}');
       if (a !== -1 && b > a) {
-        const parsed = JSON.parse(s.slice(a, b + 1));
-        return {
-          reply:   String(parsed.reply   || '✅'),
-          actions: Array.isArray(parsed.actions) ? parsed.actions : [],
-        };
+        const p = JSON.parse(s.slice(a, b + 1));
+        return { reply: String(p.reply || '✅'), actions: Array.isArray(p.actions) ? p.actions : [] };
       }
     } catch {}
-    // Last resort: strip any JSON-like block so the user sees the text, not raw JSON
     return { reply: raw.replace(/\{[\s\S]*\}/g, '').trim() || '✅', actions: [] };
   }
 }
 
-// ── Finder helpers (3-tier: exact → strip-non-alpha → includes) ───────────────
+// ── Finders ───────────────────────────────────────────────────────────────────
 
-function stripNonAlpha(s) {
-  return s.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
-}
+function norm(s) { return s.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''); }
 
 function findChannel(guild, name) {
   if (!name) return null;
-  const n  = name.toLowerCase().replace(/^#/, '').trim();
-  const ns = stripNonAlpha(n);
+  const n = name.toLowerCase().replace(/^#/, '').trim(), nn = norm(n);
   return (
     guild.channels.cache.find(c => c.type !== ChannelType.GuildCategory && c.name.toLowerCase() === n) ??
-    guild.channels.cache.find(c => c.type !== ChannelType.GuildCategory && stripNonAlpha(c.name) === ns) ??
-    guild.channels.cache.find(c => c.type !== ChannelType.GuildCategory && (
-      stripNonAlpha(c.name).includes(ns) || ns.includes(stripNonAlpha(c.name))
-    )) ??
+    guild.channels.cache.find(c => c.type !== ChannelType.GuildCategory && norm(c.name) === nn) ??
+    guild.channels.cache.find(c => c.type !== ChannelType.GuildCategory && (norm(c.name).includes(nn) || nn.includes(norm(c.name)))) ??
     null
   );
 }
 
 function findCategory(guild, name) {
   if (!name) return null;
-  const n  = name.toLowerCase();
-  const ns = stripNonAlpha(n);
+  const n = name.toLowerCase(), nn = norm(n);
   return (
     guild.channels.cache.find(c => c.type === ChannelType.GuildCategory && c.name.toLowerCase() === n) ??
-    guild.channels.cache.find(c => c.type === ChannelType.GuildCategory && stripNonAlpha(c.name) === ns) ??
-    guild.channels.cache.find(c => c.type === ChannelType.GuildCategory && (
-      stripNonAlpha(c.name).includes(ns) || ns.includes(stripNonAlpha(c.name))
-    )) ??
+    guild.channels.cache.find(c => c.type === ChannelType.GuildCategory && norm(c.name) === nn) ??
+    guild.channels.cache.find(c => c.type === ChannelType.GuildCategory && (norm(c.name).includes(nn) || nn.includes(norm(c.name)))) ??
     null
   );
 }
 
 function findRole(guild, name) {
   if (!name) return null;
-  const n  = name.toLowerCase().replace(/^@/, '').trim();
-  const ns = stripNonAlpha(n);
+  const n = name.toLowerCase().replace(/^@/, '').trim(), nn = norm(n);
   return (
     guild.roles.cache.find(r => r.name.toLowerCase() === n) ??
-    guild.roles.cache.find(r => stripNonAlpha(r.name) === ns) ??
+    guild.roles.cache.find(r => norm(r.name) === nn) ??
     null
   );
 }
@@ -191,54 +195,60 @@ function safeHex(c) {
   return /^[0-9A-Fa-f]{6}$/.test(h) ? parseInt(h, 16) : 0;
 }
 
-// ── Action executor ───────────────────────────────────────────────────────────
+// ── Action executor (uses existing bot infrastructure) ────────────────────────
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-async function executeActions(guild, actions, db) {
+async function executeActions(guild, actions, db, isOwner) {
   const done = [], fails = [];
 
   for (const act of actions) {
+    // Block dangerous owner-only actions for non-owners
+    if (['clone_server', 'list_guilds'].includes(act.type) && !isOwner) {
+      fails.push(`"${act.type}" is restricted to the bot owner`);
+      continue;
+    }
+
     try {
       switch (act.type) {
 
+        // ── Channels/Categories ──────────────────────────────────────────────
         case 'create_category':
           await guild.channels.create({ name: act.name.slice(0, 100), type: ChannelType.GuildCategory, reason: 'AI chat' });
           done.push(`Created category **${act.name}**`);
           break;
 
         case 'create_text_channel': {
-          const parent = findCategory(guild, act.category);
-          await guild.channels.create({ name: act.name.slice(0, 100), type: ChannelType.GuildText, parent: parent?.id, topic: act.topic?.slice(0, 1024), reason: 'AI chat' });
-          done.push(`Created #**${act.name}**${parent ? ` in ${parent.name}` : ''}`);
+          const par = findCategory(guild, act.category);
+          await guild.channels.create({ name: act.name.slice(0, 100), type: ChannelType.GuildText, parent: par?.id, topic: act.topic?.slice(0, 1024), reason: 'AI chat' });
+          done.push(`Created #**${act.name}**${par ? ` in ${par.name}` : ''}`);
           break;
         }
 
         case 'create_voice_channel': {
-          const parent = findCategory(guild, act.category);
-          await guild.channels.create({ name: act.name.slice(0, 100), type: ChannelType.GuildVoice, parent: parent?.id, reason: 'AI chat' });
-          done.push(`Created voice **${act.name}**${parent ? ` in ${parent.name}` : ''}`);
+          const par = findCategory(guild, act.category);
+          await guild.channels.create({ name: act.name.slice(0, 100), type: ChannelType.GuildVoice, parent: par?.id, reason: 'AI chat' });
+          done.push(`Created voice **${act.name}**${par ? ` in ${par.name}` : ''}`);
           break;
         }
 
         case 'delete_channel': {
           const ch = findChannel(guild, act.name);
           if (!ch) { fails.push(`Channel not found: "${act.name}"`); break; }
-          const chName = ch.name;
-          await ch.delete('AI chat — admin requested');
-          done.push(`Deleted channel **${chName}**`);
+          const n = ch.name; await ch.delete('AI chat — admin requested');
+          done.push(`Deleted channel **${n}**`);
           break;
         }
 
         case 'delete_category': {
           const cat = findCategory(guild, act.name);
           if (!cat) { fails.push(`Category not found: "${act.name}"`); break; }
-          const catName = cat.name;
-          await cat.delete('AI chat — admin requested');
-          done.push(`Deleted category **${catName}**`);
+          const n = cat.name; await cat.delete('AI chat — admin requested');
+          done.push(`Deleted category **${n}**`);
           break;
         }
 
+        // ── Roles ────────────────────────────────────────────────────────────
         case 'create_role':
           await guild.roles.create({ name: act.name.slice(0, 100), color: safeHex(act.color), hoist: act.hoist ?? false, mentionable: act.mentionable ?? false, reason: 'AI chat' });
           done.push(`Created role **${act.name}**`);
@@ -247,15 +257,16 @@ async function executeActions(guild, actions, db) {
         case 'delete_role': {
           const role = findRole(guild, act.name);
           if (!role) { fails.push(`Role not found: "${act.name}"`); break; }
-          const roleName = role.name;
-          await role.delete('AI chat — admin requested');
-          done.push(`Deleted role **${roleName}**`);
+          const n = role.name; await role.delete('AI chat — admin requested');
+          done.push(`Deleted role **${n}**`);
           break;
         }
 
+        // ── Ticket system (uses bot's existing infrastructure) ───────────────
         case 'setup_ticket': {
           const ch = findChannel(guild, act.channel);
           if (!ch) { fails.push(`Channel not found: "${act.channel}"`); break; }
+
           const roleIds = (act.support_roles || []).map(n => findRole(guild, n)?.id).filter(Boolean);
           db.updateGuildConfig(guild.id, {
             support_role_id:   roleIds[0] ?? null,
@@ -263,18 +274,144 @@ async function executeActions(guild, actions, db) {
             support_role_id_3: roleIds[2] ?? null,
             support_role_id_4: roleIds[3] ?? null,
             support_role_id_5: roleIds[4] ?? null,
-            ticket_message:    act.message || 'Click below to open a support ticket.',
+            ticket_message:    act.message ?? 'Click below to open a support ticket.',
+            panel_channel_id:  ch.id,
           });
+
           if (act.questions?.length) db.setTicketQuestions(guild.id, act.questions.slice(0, 5));
+
+          // Check for existing categories — use select menu if present
+          const existingCats = db.getTicketCategories(guild.id);
+          let panelRow;
+          if (existingCats.length > 0) {
+            const select = new StringSelectMenuBuilder()
+              .setCustomId('ticket:category_select')
+              .setPlaceholder('Select a ticket type...')
+              .setMinValues(1).setMaxValues(1)
+              .addOptions(existingCats.map(cat =>
+                new StringSelectMenuOptionBuilder()
+                  .setLabel(cat.name.substring(0, 100))
+                  .setValue(String(cat.id))
+                  .setEmoji('🎫')
+              ));
+            panelRow = new ActionRowBuilder().addComponents(select);
+          } else {
+            panelRow = new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setCustomId('ticket:open').setLabel('Open a Ticket').setEmoji('🎫').setStyle(ButtonStyle.Primary)
+            );
+          }
+
           const embed = new EmbedBuilder()
-            .setTitle(act.title || '🎫 Support Tickets')
-            .setDescription(act.message || 'Click below to open a support ticket.')
+            .setTitle(act.title ?? '🎫 Support Tickets')
+            .setDescription(act.message ?? 'Click below to open a support ticket.')
             .setColor(0x5865F2);
+
+          const msg = await ch.send({ embeds: [embed], components: [panelRow] });
+          db.updateGuildConfig(guild.id, { panel_message_id: msg.id });
+          done.push(`Ticket panel created in **#${ch.name}**`);
+          break;
+        }
+
+        // ── Form system (uses bot's existing form infrastructure) ────────────
+        case 'setup_form': {
+          const ch    = findChannel(guild, act.channel);
+          if (!ch) { fails.push(`Channel not found: "${act.channel}"`); break; }
+          const logCh = act.log_channel ? findChannel(guild, act.log_channel) : null;
+
+          const formId = db.createForm(guild.id, {
+            title:           act.title       ?? 'Application Form',
+            description:     act.description ?? '',
+            channel_id:      ch.id,
+            log_channel_id:  logCh?.id       ?? null,
+            button_label:    act.button_label ?? 'Apply',
+            mode:            act.mode         ?? 'modal',
+          });
+
+          (act.questions ?? []).slice(0, 5).forEach((q, i) => db.addFormQuestion(formId, String(q), i));
+
+          const embed = new EmbedBuilder()
+            .setTitle(act.title ?? 'Application Form')
+            .setDescription(act.description ?? 'Click below to submit a form.')
+            .setColor(0x7c5af7);
           const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('ticket:open').setLabel('Open a Ticket').setEmoji('🎫').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId(`form:open:${formId}`).setLabel(act.button_label ?? 'Apply').setStyle(ButtonStyle.Primary)
           );
-          await ch.send({ embeds: [embed], components: [row] });
-          done.push(`Ticket panel set up in **#${ch.name}**`);
+          const msg = await ch.send({ embeds: [embed], components: [row] });
+          db.setFormMessageId(formId, msg.id);
+          done.push(`Form panel created in **#${ch.name}**`);
+          break;
+        }
+
+        // ── Button role panel (uses bot's existing button-roles system) ──────
+        case 'setup_button_panel': {
+          const ch = findChannel(guild, act.channel);
+          if (!ch) { fails.push(`Channel not found: "${act.channel}"`); break; }
+
+          const validBtns = (act.buttons ?? []).map(b => ({ btn: b, role: findRole(guild, b.role) })).filter(x => x.role);
+          if (!validBtns.length) { fails.push('No valid roles found for button panel'); break; }
+
+          const roleIds = validBtns.map(x => x.role.id);
+          const panelId = db.createButtonRole(guild.id, ch.id, act.title ?? 'Role Panel', act.description ?? '', roleIds);
+
+          const embed = new EmbedBuilder()
+            .setTitle(act.title ?? '🎭 Role Panel')
+            .setDescription(act.description ?? 'Click a button to toggle your role.')
+            .setColor(safeHex(act.color) || 0x7c5af7);
+
+          const btns = validBtns.slice(0, 5).map(({ btn, role }) => {
+            const b = new ButtonBuilder()
+              .setCustomId(`role:toggle::${role.id}`)
+              .setLabel((btn.label ?? role.name).slice(0, 80))
+              .setStyle(ButtonStyle.Secondary);
+            if (btn.emoji) { try { b.setEmoji(btn.emoji); } catch {} }
+            return b;
+          });
+
+          const msg = await ch.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(...btns)] });
+          db.updateButtonRoleMsgId(panelId, msg.id);
+          done.push(`Role panel created in **#${ch.name}** with ${btns.length} button(s)`);
+          break;
+        }
+
+        // ── Rich embed (owner + admins) ───────────────────────────────────────
+        case 'create_embed': {
+          const ch = findChannel(guild, act.channel);
+          if (!ch) { fails.push(`Channel not found: "${act.channel}"`); break; }
+          const embed = new EmbedBuilder().setColor(safeHex(act.color) || 0x5865F2);
+          if (act.title)       embed.setTitle(String(act.title).slice(0, 256));
+          if (act.description) embed.setDescription(String(act.description).slice(0, 4096));
+          if (act.footer)      embed.setFooter({ text: String(act.footer).slice(0, 2048) });
+          if (act.thumbnail)   embed.setThumbnail(act.thumbnail);
+          if (act.image)       embed.setImage(act.image);
+          if (act.fields?.length) {
+            embed.addFields((act.fields).slice(0, 25).map(f => ({
+              name:   String(f.name  ?? 'Field').slice(0, 256),
+              value:  String(f.value ?? '—').slice(0, 1024),
+              inline: f.inline ?? false,
+            })));
+          }
+          await ch.send({ embeds: [embed] });
+          done.push(`Embed sent to **#${ch.name}**`);
+          break;
+        }
+
+        // ── Owner-only: clone server ─────────────────────────────────────────
+        case 'clone_server': {
+          if (!guild.members.me?.permissions.has(PermissionFlagsBits.ManageGuild)) {
+            fails.push('Bot needs Manage Server permission to create a template'); break;
+          }
+          const existing = await guild.fetchTemplates().catch(() => null);
+          if (existing?.size > 0) for (const t of existing.values()) await t.delete().catch(() => {});
+          const tmpl = await guild.createTemplate(guild.name, 'Created by AI chat');
+          done.push(`Template created: https://discord.new/${tmpl.code}`);
+          break;
+        }
+
+        // ── Owner-only: list all guilds ──────────────────────────────────────
+        case 'list_guilds': {
+          const guilds = [...guild.client.guilds.cache.values()].sort((a, b) => b.memberCount - a.memberCount);
+          const list = guilds.map((g, i) => `${i + 1}. **${g.name}** — ${g.memberCount} members`).join('\n');
+          done.push(`Bot is in **${guilds.length}** servers:\n${list}`);
           break;
         }
 
@@ -282,7 +419,7 @@ async function executeActions(guild, actions, db) {
           fails.push(`Unknown action: ${act.type}`);
       }
     } catch (e) {
-      fails.push(`${act.type} "${act.name ?? act.channel ?? ''}" failed: ${e.message}`);
+      fails.push(`${act.type} failed: ${e.message}`);
     }
     await sleep(500);
   }
@@ -300,36 +437,27 @@ async function sendReply(message, text) {
       if (first) { await message.reply({ content: chunk }); first = false; }
       else          await message.channel.send({ content: chunk });
       chunk = line;
-    } else {
-      chunk = chunk ? chunk + '\n' + line : line;
-    }
+    } else { chunk = chunk ? chunk + '\n' + line : line; }
   }
-  if (chunk) {
-    if (first) await message.reply({ content: chunk });
-    else          await message.channel.send({ content: chunk });
-  }
+  if (chunk) { if (first) await message.reply({ content: chunk }); else await message.channel.send({ content: chunk }); }
 }
 
-// ── Shared AI round-trip ──────────────────────────────────────────────────────
+// ── Shared AI round ───────────────────────────────────────────────────────────
 
-async function runAiRound(convKey, guild, userText, db) {
+async function runAiRound(convKey, guild, userText, db, isOwner) {
   const conv = getConv(convKey);
-  const raw  = await callGroq(buildSystemPrompt(guild), conv.messages, userText);
+  const raw  = await callGroq(buildSystemPrompt(guild, isOwner), conv.messages, userText);
   const { reply, actions } = parseResponse(raw);
 
-  // Store clean text in history — keeps context concise and natural for the model
-  const actionSummary = [];
   let extra = '';
   if (actions.length) {
-    const { done, fails } = await executeActions(guild, actions, db);
-    if (done.length)  { extra += '\n\n✅ ' + done.join('\n✅ '); actionSummary.push(...done); }
-    if (fails.length) { extra += '\n\n⚠️ ' + fails.join('\n⚠️ '); }
+    const { done, fails } = await executeActions(guild, actions, db, isOwner);
+    if (done.length)  extra += '\n\n✅ ' + done.join('\n✅ ');
+    if (fails.length) extra += '\n\n⚠️ ' + fails.join('\n⚠️ ');
   }
 
-  // Push clean text (not raw JSON) so history stays readable for future turns
   pushMsg(convKey, 'user',      userText);
-  pushMsg(convKey, 'assistant', reply + (actionSummary.length ? ' [Done: ' + actionSummary.join(', ') + ']' : ''));
-
+  pushMsg(convKey, 'assistant', reply + (extra ? ' [Actions completed]' : ''));
   return reply + extra;
 }
 
@@ -337,28 +465,25 @@ async function runAiRound(convKey, guild, userText, db) {
 
 async function handleGuildMessage(message, db) {
   if (!message.guild) return;
-  if (!message.member?.permissions.has(PermissionFlagsBits.Administrator)) return;
+  if (!process.env.GROQ_API_KEY) return message.reply({ content: '❌ `GROQ_API_KEY` not configured.', ephemeral: true });
 
-  if (!process.env.GROQ_API_KEY) {
-    return message.reply({ content: '❌ `GROQ_API_KEY` is not configured.' });
-  }
+  const isOwner = message.author.id === OWNER_ID;
+  // Owner bypasses the admin check; everyone else must be Administrator
+  if (!isOwner && !message.member?.permissions.has(PermissionFlagsBits.Administrator)) return;
 
   const userText = message.content.replace(/<@!?\d+>/g, '').trim();
-  if (!userText) {
-    return message.reply({ content: '👋 Hi! Tell me what you want to do with this server.' });
-  }
+  if (!userText) return message.reply({ content: '👋 Tell me what to do with this server.' });
 
-  const convKey    = `guild:${message.guild.id}:${message.author.id}`;
+  const convKey     = `guild:${message.guild.id}:${message.author.id}`;
   const typingPulse = setInterval(() => message.channel.sendTyping().catch(() => {}), 9000);
   message.channel.sendTyping().catch(() => {});
 
   try {
-    const fullReply = await runAiRound(convKey, message.guild, userText, db);
+    const fullReply = await runAiRound(convKey, message.guild, userText, db, isOwner);
     await sendReply(message, fullReply);
   } catch (e) {
-    const detail = e.response?.data?.error?.message ?? e.message;
-    console.error('[aiChat] guild error:', detail);
-    await message.reply({ content: `❌ AI error: \`${detail}\`` });
+    console.error('[aiChat] guild error:', e.response?.data?.error?.message ?? e.message);
+    await message.reply({ content: `❌ AI error: \`${e.response?.data?.error?.message ?? e.message}\`` });
   } finally {
     clearInterval(typingPulse);
   }
@@ -367,11 +492,10 @@ async function handleGuildMessage(message, db) {
 // ── DM handler ────────────────────────────────────────────────────────────────
 
 async function handleDmMessage(message, client, db) {
-  if (!process.env.GROQ_API_KEY) {
-    return message.reply({ content: '❌ `GROQ_API_KEY` is not configured.' });
-  }
+  if (!process.env.GROQ_API_KEY) return message.reply({ content: '❌ `GROQ_API_KEY` not configured.' });
 
   const userId   = message.author.id;
+  const isOwner  = userId === OWNER_ID;
   const convKey  = `dm:${userId}`;
   const conv     = getConv(convKey);
   const typingPulse = setInterval(() => message.channel.sendTyping().catch(() => {}), 9000);
@@ -379,44 +503,38 @@ async function handleDmMessage(message, client, db) {
 
   try {
     if (!conv.guildId) {
-      const sharedGuilds = [...client.guilds.cache.values()];
-      if (sharedGuilds.length === 0) { await message.reply({ content: "I'm not in any server we share." }); return; }
+      const guilds = [...client.guilds.cache.values()];
+      if (!guilds.length) { await message.reply({ content: "I'm not in any servers." }); return; }
 
       const input = message.content.trim();
       const num   = parseInt(input, 10);
-      if (!isNaN(num) && num >= 1 && num <= sharedGuilds.length) {
-        conv.guildId = sharedGuilds[num - 1].id;
+      if (!isNaN(num) && num >= 1 && num <= guilds.length) {
+        conv.guildId = guilds[num - 1].id;
       } else {
-        const match = sharedGuilds.find(g => g.name.toLowerCase().includes(input.toLowerCase()));
+        const match = guilds.find(g => g.name.toLowerCase().includes(input.toLowerCase()));
         if (match) conv.guildId = match.id;
       }
 
       if (!conv.guildId) {
-        const list = sharedGuilds.map((g, i) => `**${i + 1}.** ${g.name}`).join('\n');
+        const list = guilds.map((g, i) => `**${i + 1}.** ${g.name}`).join('\n');
         await message.reply({ content: `Which server do you want to manage? Reply with a number:\n\n${list}` });
         return;
       }
-      const g = client.guilds.cache.get(conv.guildId);
-      await message.reply({ content: `✅ Managing **${g.name}**. What would you like to do?` });
+      await message.reply({ content: `✅ Managing **${client.guilds.cache.get(conv.guildId).name}**. What would you like to do?` });
       return;
     }
 
     const guild = client.guilds.cache.get(conv.guildId);
-    if (!guild) {
-      conv.guildId = null;
-      await message.reply({ content: 'That server is no longer available. Please start over.' });
-      return;
-    }
+    if (!guild) { conv.guildId = null; await message.reply({ content: 'Server unavailable. Please start over.' }); return; }
 
     const userText = message.content.trim();
     if (!userText) return;
 
-    const fullReply = await runAiRound(convKey, guild, userText, db);
+    const fullReply = await runAiRound(convKey, guild, userText, db, isOwner);
     await sendReply(message, fullReply);
   } catch (e) {
-    const detail = e.response?.data?.error?.message ?? e.message;
-    console.error('[aiChat] DM error:', detail);
-    await message.reply({ content: `❌ AI error: \`${detail}\`` });
+    console.error('[aiChat] DM error:', e.response?.data?.error?.message ?? e.message);
+    await message.reply({ content: `❌ AI error: \`${e.response?.data?.error?.message ?? e.message}\`` });
   } finally {
     clearInterval(typingPulse);
   }

@@ -334,8 +334,10 @@ function getGuildConfig(guildId) {
 
 function updateGuildConfig(guildId, updates) {
   getGuildConfig(guildId);
-  const fields = Object.keys(updates).map(k => `${k} = ?`).join(', ');
-  db.prepare(`UPDATE guild_config SET ${fields} WHERE guild_id = ?`).run(...Object.values(updates), guildId);
+  // node:sqlite cannot bind undefined — coerce to null
+  const safe   = Object.fromEntries(Object.entries(updates).map(([k, v]) => [k, v === undefined ? null : v]));
+  const fields = Object.keys(safe).map(k => `${k} = ?`).join(', ');
+  db.prepare(`UPDATE guild_config SET ${fields} WHERE guild_id = ?`).run(...Object.values(safe), guildId);
 }
 
 function getAutomodConfig(guildId) {
@@ -481,7 +483,7 @@ module.exports = {
   getTicketQuestions:   guildId => stmts.getTicketQuestions.all(guildId),
   setTicketQuestions:   (guildId, questions) => {
     stmts.clearGlobalTicketQs.run(guildId);
-    questions.forEach((q, i) => stmts.insertTicketQuestion.run(guildId, q, i));
+    questions.forEach((q, i) => stmts.insertTicketQuestion.run(guildId, String(q), i));
   },
   clearTicketQuestions: guildId => stmts.clearTicketQuestions.run(guildId),
 
@@ -502,7 +504,7 @@ module.exports = {
   getCategoryQuestions:  categoryId => stmts.getCategoryQuestions.all(categoryId),
   setCategoryQuestions:  (guildId, categoryId, questions) => {
     stmts.deleteCategoryQuestions.run(categoryId);
-    questions.forEach((q, i) => stmts.insertCategoryQuestion.run(guildId, q, i, categoryId));
+    questions.forEach((q, i) => stmts.insertCategoryQuestion.run(guildId, String(q), i, categoryId));
   },
 
   addCloneApproval:    (userId, approvedBy) => stmts.addCloneApprovalStmt.run(userId, approvedBy),
