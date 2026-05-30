@@ -73,20 +73,51 @@ function buildSystemPrompt(guild, isOwner) {
     .sort((a, b) => b.position - a.position).slice(0, 40)
     .map(r => `  • "${r.name}"`).join('\n') || '  (none)';
 
-  const ownerActions = isOwner ? `
-Owner-only:
-  {"type":"clone_server"}                                     — create a discord.new template of this server
-  {"type":"list_guilds"}                                      — list all servers the bot is in
-  {"type":"create_embed","channel":"name","title":"…","description":"…","color":"#HEX","fields":[{"name":"…","value":"…","inline":true}],"footer":"…","thumbnail":"url","image":"url"}` : '';
+  const ownerSection = isOwner ? `
 
-  const ownerRules = isOwner ? `
-9. You are talking to the BOT OWNER. Give them full access including dangerous commands.
-10. The owner can request any custom creation: embeds, panels, buttons, anything. Use create_embed for rich embeds.
-11. For clone_server and list_guilds, execute immediately without asking for confirmation.` : '';
+━━━━ OWNER-ONLY ACTIONS ━━━━
+  {"type":"clone_server"}
+  {"type":"list_guilds"}
+  {"type":"create_embed","channel":"name","title":"…","description":"…","color":"#HEX","fields":[{"name":"…","value":"…","inline":false}],"footer":"…"}
 
-  return `You are a smart Discord server manager AI for "${guild.name}". Help admins manage their server through natural conversation. You call the bot's EXISTING systems rather than building things from scratch — this makes everything reliable and professional.
+9. You are talking to the BOT OWNER — full access, execute any request immediately.` : '';
 
-SERVER STATE
+  return `You are a smart, action-taking Discord server manager AI for "${guild.name}".
+
+━━━━ CRITICAL: HOW ACTIONS WORK ━━━━
+The ONLY way things get done is through the "actions" array in your JSON.
+If "actions" is empty → NOTHING WILL HAPPEN, regardless of what "reply" says.
+NEVER say "Done", "Created X", "Setting up Y" unless X/Y is in your actions array.
+If you cannot do something → say so clearly and leave actions empty.
+If the request is unclear → ask ONE specific question, do NOT guess.
+
+━━━━ WRITE TO CHANNEL vs CREATE CHANNEL ━━━━
+Use send_message → user wants to POST content to an EXISTING channel (rules, announcements, info text).
+Use create_text_channel → user explicitly wants a NEW channel created.
+CHECK the channel list below before acting. If the channel already exists, use send_message.
+
+━━━━ EXAMPLES OF CORRECT RESPONSES ━━━━
+User: "create a gaming section with 3 channels"
+{"reply":"Creating the gaming section!","actions":[
+  {"type":"create_category","name":"🎮 Gaming"},
+  {"type":"create_text_channel","name":"🎮-general","category":"🎮 Gaming"},
+  {"type":"create_text_channel","name":"🏆-competitive","category":"🎮 Gaming"},
+  {"type":"create_voice_channel","name":"🔊 Gaming VC","category":"🎮 Gaming"}
+]}
+
+User: "write server rules in #rules" (rules channel already exists)
+{"reply":"Posting rules in #rules!","actions":[
+  {"type":"send_message","channel":"rules","embed":{"title":"📋 Server Rules","description":"1. Be respectful\n2. No spam\n3. Follow Discord ToS","color":"#5865F2"}}
+]}
+
+User: "set up tickets with 2 categories: bug reports and general support"
+{"reply":"Setting up ticket system!","actions":[
+  {"type":"setup_ticket","channel":"tickets","support_roles":[],"title":"🎫 Support","message":"Click to open a ticket"},
+  {"type":"add_ticket_category","name":"🐛 Bug Report","questions":["Describe the bug","Steps to reproduce"]},
+  {"type":"add_ticket_category","name":"❓ General Support","questions":["How can we help?"]}
+]}
+
+━━━━ SERVER STATE ━━━━
 Categories:
 ${cats}
 
@@ -96,40 +127,39 @@ ${chs}
 Roles:
 ${roles}
 
-RESPONSE FORMAT — return ONLY a JSON object, nothing outside it:
-{"reply":"…","actions":[]}
-
-AVAILABLE ACTIONS:
+━━━━ AVAILABLE ACTIONS ━━━━
 Channels/Categories:
   {"type":"create_category","name":"🎮 Gaming"}
-  {"type":"create_text_channel","name":"💬-general","category":"exact category name or null","topic":"optional"}
-  {"type":"create_voice_channel","name":"🔊 General VC","category":"exact category name or null"}
-  {"type":"delete_channel","name":"exact channel name from list"}
-  {"type":"delete_category","name":"exact category name from list"}
+  {"type":"create_text_channel","name":"💬-general","category":"category name or null","topic":"optional"}
+  {"type":"create_voice_channel","name":"🔊 VC","category":"category name or null"}
+  {"type":"delete_channel","name":"exact name from list"}
+  {"type":"delete_category","name":"exact name from list"}
+
+Send to existing channel (use this instead of creating a new one):
+  {"type":"send_message","channel":"exact-channel-name","content":"optional plain text","embed":{"title":"…","description":"…","color":"#HEX","fields":[{"name":"…","value":"…","inline":false}],"footer":"…","thumbnail":"url","image":"url"}}
 
 Roles:
   {"type":"create_role","name":"🎮 Gamer","color":"#FF5733","hoist":true,"mentionable":false}
-  {"type":"delete_role","name":"exact role name from list"}
+  {"type":"delete_role","name":"exact name from list"}
 
-Ticket system (uses existing ticket infrastructure):
-  {"type":"setup_ticket","channel":"channel-name","support_roles":["Role1","Role2"],"title":"🎫 Support","message":"Click to open a ticket","questions":["What is your issue?"]}
+Tickets (multi-category: use setup_ticket once, then add_ticket_category for each type):
+  {"type":"setup_ticket","channel":"name","support_roles":["Role1"],"title":"🎫 Support","message":"Click to open","questions":["optional global Q"]}
+  {"type":"add_ticket_category","name":"🐛 Bug Report","questions":["Q1","Q2"]}
 
-Form system (uses existing form infrastructure):
-  {"type":"setup_form","channel":"channel-name","log_channel":"staff-logs or null","title":"Form Title","description":"Description","button_label":"Apply Now","questions":["Your name?","Why join?"],"mode":"modal"}
+Forms:
+  {"type":"setup_form","channel":"name","log_channel":"log or null","title":"Title","description":"Desc","button_label":"Apply","questions":["Q1"],"mode":"modal"}
 
-Button role panel (uses existing role panel infrastructure):
-  {"type":"setup_button_panel","channel":"channel-name","title":"🎭 Self Roles","description":"Pick your roles","buttons":[{"label":"🎮 Gamer","role":"exact role name"}]}
-${ownerActions}
+Role panels:
+  {"type":"setup_button_panel","channel":"name","title":"🎭 Roles","description":"Pick a role","buttons":[{"label":"🎮 Gamer","role":"exact role name"}]}
+${ownerSection}
 
-RULES
-1. Reply in the SAME LANGUAGE as the admin (Hebrew → Hebrew, English → English).
-2. Channel/category names MUST include a thematic emoji (e.g. "🎮 Gaming", "#💬-general").
-3. In actions use the EXACT name from the server state list above.
-4. NEVER delete unless the admin explicitly says "delete" / "remove" / "מחק" / "הסר".
-5. When you need info (which channel? which roles?) ASK and show the options from the server state.
-6. You may return multiple actions in one response.
-7. Ticket setup uses the bot's built-in ticket system — it will appear as a proper ticket panel.
-8. Form setup uses the bot's built-in form system — questions, log channel, approval mode.${ownerRules}`;
+━━━━ RULES ━━━━
+1. Respond in the SAME LANGUAGE as the admin (Hebrew → Hebrew, English → English).
+2. Keep "reply" SHORT — one sentence. All work goes in "actions".
+3. Channel/category names include a thematic emoji unless they already exist in the list.
+4. Use EXACT names from the server state for existing channels/roles/categories.
+5. NEVER delete unless admin explicitly says "delete" / "remove" / "מחק" / "הסר".
+6. Return ONLY valid JSON — nothing outside the JSON object.`;
 }
 
 // ── Groq ──────────────────────────────────────────────────────────────────────
@@ -487,7 +517,58 @@ async function executeActions(guild, actions, db, isOwner) {
           break;
         }
 
-        default:
+        case 'send_message': {
+          const ch = findChannel(guild, act.channel);
+          if (!ch) { fails.push(`Channel not found: "${act.channel}"`); break; }
+          const opts = {};
+          if (act.content) opts.content = String(act.content).slice(0, 2000);
+          if (act.embed) {
+            const em = new EmbedBuilder().setColor(safeHex(act.embed.color) || 0x5865F2);
+            if (act.embed.title)       em.setTitle(String(act.embed.title).slice(0, 256));
+            if (act.embed.description) em.setDescription(String(act.embed.description).slice(0, 4096));
+            if (act.embed.footer)      em.setFooter({ text: String(act.embed.footer).slice(0, 2048) });
+            if (act.embed.thumbnail)   em.setThumbnail(act.embed.thumbnail);
+            if (act.embed.image)       em.setImage(act.embed.image);
+            if (act.embed.fields?.length) {
+              em.addFields(act.embed.fields.slice(0, 25).map(f => ({
+                name:   String(f.name  ?? 'Field').slice(0, 256),
+                value:  String(f.value ?? '—').slice(0, 1024),
+                inline: f.inline ?? false,
+              })));
+            }
+            opts.embeds = [em];
+          }
+          if (!opts.content && !opts.embeds) { fails.push('send_message: provide content or embed'); break; }
+          await ch.send(opts);
+          done.push(`Message sent to **#${ch.name}**`);
+          break;
+        }
+
+        case 'add_ticket_category': {
+          const existing = db.getTicketCategories(guild.id);
+          const catId    = db.createTicketCategory(guild.id, String(act.name || 'Category'), existing.length);
+          if (act.questions?.length) db.setCategoryQuestions(guild.id, catId, act.questions.slice(0, 5).map(String));
+          // Update panel to select menu
+          try {
+            const cfg     = db.getGuildConfig(guild.id);
+            const allCats = db.getTicketCategories(guild.id);
+            const pCh     = cfg.panel_channel_id ? guild.channels.cache.get(cfg.panel_channel_id) : null;
+            const pMsg    = pCh && cfg.panel_message_id ? await pCh.messages.fetch(cfg.panel_message_id).catch(() => null) : null;
+            if (pMsg && allCats.length > 0) {
+              const sel = new StringSelectMenuBuilder()
+                .setCustomId('ticket:category_select').setPlaceholder('Select a ticket type...')
+                .setMinValues(1).setMaxValues(1)
+                .addOptions(allCats.map(c =>
+                  new StringSelectMenuOptionBuilder().setLabel(c.name.substring(0, 100)).setValue(String(c.id)).setEmoji('🎫')
+                ));
+              await pMsg.edit({ embeds: pMsg.embeds, components: [new ActionRowBuilder().addComponents(sel)] });
+            }
+          } catch (err) { console.error('[add_ticket_category]', err.message); }
+          done.push(`Added ticket category **${act.name}**`);
+          break;
+        }
+
+                default:
           fails.push(`Unknown action: ${act.type}`);
       }
     } catch (e) {
