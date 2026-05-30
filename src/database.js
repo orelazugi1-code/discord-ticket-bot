@@ -184,6 +184,12 @@ db.exec(`
     data       TEXT NOT NULL,
     expires_at INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS clone_approved_users (
+    user_id     TEXT PRIMARY KEY,
+    approved_by TEXT NOT NULL,
+    approved_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // ── Migrations ────────────────────────────────────────────────────────────────
@@ -311,6 +317,11 @@ const stmts = {
   insertCategoryQuestion:    db.prepare('INSERT INTO ticket_questions (guild_id, question, position, category_id) VALUES (?, ?, ?, ?)'),
   clearGlobalTicketQs:       db.prepare('DELETE FROM ticket_questions WHERE guild_id = ? AND category_id IS NULL'),
   clearAllCategoryQs:        db.prepare('DELETE FROM ticket_questions WHERE guild_id = ? AND category_id IS NOT NULL'),
+
+  addCloneApprovalStmt:      db.prepare('INSERT OR REPLACE INTO clone_approved_users (user_id, approved_by) VALUES (?, ?)'),
+  removeCloneApprovalStmt:   db.prepare('DELETE FROM clone_approved_users WHERE user_id = ?'),
+  isCloneApprovedStmt:       db.prepare('SELECT 1 FROM clone_approved_users WHERE user_id = ?'),
+  listCloneApprovedStmt:     db.prepare('SELECT * FROM clone_approved_users ORDER BY approved_at DESC'),
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -492,4 +503,9 @@ module.exports = {
     stmts.deleteCategoryQuestions.run(categoryId);
     questions.forEach((q, i) => stmts.insertCategoryQuestion.run(guildId, q, i, categoryId));
   },
+
+  addCloneApproval:    (userId, approvedBy) => stmts.addCloneApprovalStmt.run(userId, approvedBy),
+  removeCloneApproval: userId => stmts.removeCloneApprovalStmt.run(userId),
+  isCloneApproved:     userId => !!stmts.isCloneApprovedStmt.get(userId),
+  listCloneApproved:   () => stmts.listCloneApprovedStmt.all(),
 };
