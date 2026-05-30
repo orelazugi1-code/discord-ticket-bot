@@ -277,7 +277,7 @@ async function handleWizardInteraction(interaction, db) {
 
   // ── Edit ──────────────────────────────────────────────────────────────────
   if (action === 'edit') {
-    await interaction.update({ embeds: [], components: [] });
+    await interaction.update({ content: '⏳ Processing…', embeds: [], components: [] });
     await continueFromWizard(interaction, db,
       'User wants to edit — ask what to change and update the plan',
       guildId, userId);
@@ -301,7 +301,7 @@ async function handleWizardInteraction(interaction, db) {
   // ── Form builder: done with questions ────────────────────────────────────
   if (action === 'q_done') {
     const qs = w.data?.questions || [];
-    await interaction.update({ embeds: [], components: [] });
+    await interaction.update({ content: '⏳ Processing…', embeds: [], components: [] });
     await continueFromWizard(interaction, db,
       `Form questions set: ${qs.length > 0 ? qs.map((q,i) => `${i+1}. ${q}`).join(' | ') : 'none (no questions)'}. Proceed to next step.`,
       guildId, userId);
