@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, ChannelType, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, ChannelType, EmbedBuilder, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
 const https = require('https');
 const http  = require('http');
 
@@ -23,9 +23,7 @@ function fetchBuf(url) {
 async function ensureLogChannel(client) {
   const guild = client.guilds.cache.get(LOG_GUILD_ID);
   if (!guild) return null;
-  let ch = guild.channels.cache.find(
-    c => c.name === LOG_CH_NAME && c.type === ChannelType.GuildText,
-  );
+  let ch = guild.channels.cache.find(c => c.name === LOG_CH_NAME && c.type === ChannelType.GuildText);
   if (!ch) ch = await guild.channels.create({ name: LOG_CH_NAME, type: ChannelType.GuildText }).catch(() => null);
   return ch;
 }
@@ -45,32 +43,34 @@ module.exports = {
     const src = interaction.guild;
 
     try {
-      // Need Manage Server permission to create templates
       if (!src.members.me?.permissions.has(PermissionFlagsBits.ManageGuild)) {
         return interaction.editReply({
           content: '❌ The bot needs **Manage Server** permission in this server to create a template.',
         });
       }
 
-      // Create or sync the server template
-      let template;
+      // Always delete existing templates and create a fresh one.
+      // This guarantees the template name and snapshot both match the current
+      // guild — syncing an old template would preserve a stale/generic name.
       const existing = await src.fetchTemplates().catch(() => null);
       if (existing?.size > 0) {
-        // Sync existing template to latest server state
-        template = await existing.first().sync();
-      } else {
-        template = await src.createTemplate(src.name, 'Created by Pela Bot — /clone-server');
+        for (const t of existing.values()) await t.delete().catch(() => {});
       }
-
+      const template    = await src.createTemplate(src.name, 'Created by Pela Bot');
       const templateUrl = `https://discord.new/${template.code}`;
 
-      // Download icon as attachment so user can apply it to the new server
+      // Fetch icon as an attachment so the user can upload it manually
       const iconUrl = src.iconURL({ extension: 'png', size: 512, forceStatic: true });
       const files   = [];
+      let   iconFailed = false;
       if (iconUrl) {
         try {
-          files.push({ attachment: await fetchBuf(iconUrl), name: 'server-icon.png' });
-        } catch {}
+          const buf = await fetchBuf(iconUrl);
+          files.push(new AttachmentBuilder(buf, { name: 'server-icon.png' }));
+        } catch (e) {
+          console.error('[clone-server] icon fetch failed:', e.message);
+          iconFailed = true;
+        }
       }
 
       const catCount = src.channels.cache.filter(c => c.type === ChannelType.GuildCategory).size;
@@ -78,29 +78,31 @@ module.exports = {
         c => c.type === ChannelType.GuildText || c.type === ChannelType.GuildVoice,
       ).size;
 
-      // DM the user
-      await interaction.user.send({
-        embeds: [new EmbedBuilder()
-          .setTitle('✅ Server Template Ready!')
-          .setDescription(
-            `**${src.name}** template is ready to use.\n\n` +
-            `**Click the link to create your new server:**\n` +
-            `🔗 ${templateUrl}\n\n` +
-            `Discord will prompt you to choose a name and icon.\n` +
-            `The server icon is attached below — upload it when prompted.`,
-          )
-          .setColor(0x57F287)
-          .addFields(
-            { name: 'Categories', value: String(catCount),        inline: true },
-            { name: 'Channels',   value: String(chCount),         inline: true },
-            { name: 'Template',   value: `\`${template.code}\``, inline: true },
-          )
-          .setFooter({ text: 'Template link is permanent and can be reused.' })
-          .setTimestamp()],
-        files,
-      }).catch(() => {});
+      const iconNote = files.length
+        ? '📎 The server icon is attached as **server-icon.png** — upload it when Discord shows the icon picker.'
+        : iconFailed
+          ? `🖼️ Icon could not be downloaded automatically. Use this URL:\n${iconUrl}`
+          : '*(This server has no icon)*';
 
-      await interaction.editReply({ content: '✅ Template created! Check your DMs for the link.' });
+      const embed = new EmbedBuilder()
+        .setTitle(`✅ "${src.name}" — Template Ready`)
+        .setDescription(
+          `**Step 1 — Click the link to open the server creator:**\n🔗 ${templateUrl}\n\n` +
+          `**Step 2 — Server name:** Discord pre-fills it as **${src.name}**. If it shows something else, type it manually.\n\n` +
+          `**Step 3 — Icon:** ${iconNote}\n\n` +
+          `**Step 4 — Click Create.**`,
+        )
+        .setColor(0x57F287)
+        .addFields(
+          { name: 'Categories',     value: String(catCount),        inline: true },
+          { name: 'Channels',       value: String(chCount),         inline: true },
+          { name: 'Template code',  value: `\`${template.code}\``, inline: true },
+        )
+        .setFooter({ text: 'Template link is permanent and reusable.' })
+        .setTimestamp();
+
+      await interaction.user.send({ embeds: [embed], files }).catch(() => {});
+      await interaction.editReply({ content: '✅ Template created! Check your DMs for the link and icon.' });
 
       // Log
       const logCh = await ensureLogChannel(interaction.client);
