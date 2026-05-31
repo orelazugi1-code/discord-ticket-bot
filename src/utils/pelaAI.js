@@ -11,6 +11,8 @@ const CONV_TTL   = 30 * 60_000;
 
 const HOME_SERVER_ID = '1510637146074120342'; // Pela's home server
 const serverMentions = new Map();              // userId → msg count since last server mention
+const permCache      = new Map();              // userId → { perm, guilds, at } (5-min TTL)
+const ticketReplied  = new Map();              // ticketId → timestamp (rate-limit ticket replies)
 const inviteCache    = { url: null, at: 0 };  // cache invite URL for 1 hour
 
 // ── Conversation store (separate from server-management AI) ───────────────────
@@ -35,21 +37,24 @@ function push(key, role, content) {
 
 // ── Home server invite ───────────────────────────────────────────────────────
 
-async function getHomeInvite(client) {
+async function getHomeInvite(client, db) {
   if (inviteCache.url && Date.now() - inviteCache.at < 3_600_000) return inviteCache.url;
+  // First check manually stored invite (set via /pela-server invite <url>)
+  if (db) {
+    const stored = db.getPelaConfig('home_invite_url');
+    if (stored) { inviteCache.url = stored; inviteCache.at = Date.now(); return stored; }
+  }
+  // Try to create one (requires CREATE_INSTANT_INVITE)
   const guild = client.guilds.cache.get(HOME_SERVER_ID);
   if (!guild) return null;
   try {
-    const invites = await guild.invites.fetch().catch(() => null);
-    const perm    = invites?.find(i => i.maxAge === 0 && i.maxUses === 0);
-    if (perm) { inviteCache.url = perm.url; inviteCache.at = Date.now(); return perm.url; }
     const ch = guild.channels.cache.find(c => c.type === 0);
     if (ch) {
       const inv = await ch.createInvite({ maxAge: 0, maxUses: 0, reason: 'Pela home invite' });
       inviteCache.url = inv.url; inviteCache.at = Date.now();
       return inv.url;
     }
-  } catch (e) { console.error('[pelaAI] invite fetch:', e.message); }
+  } catch (e) { console.error('[pelaAI] invite create failed:', e.message); }
   return null;
 }
 
@@ -57,25 +62,38 @@ async function getHomeInvite(client) {
 
 async function detectPermLevel(userId, client, db) {
   if (userId === OWNER_ID) return 'owner';
+  const cached = permCache.get(userId);
+  if (cached && Date.now() - cached.at < 5 * 60_000) return cached.perm;
   for (const [gid, guild] of client.guilds.cache) {
     const m = guild.members.cache.get(userId)
            || await guild.members.fetch(userId).catch(() => null);
     if (!m) continue;
-    if (m.permissions.has(PermissionFlagsBits.Administrator)) return 'admin';
+    if (m.permissions.has(PermissionFlagsBits.Administrator)) {
+      permCache.set(userId, { perm: 'admin', at: Date.now() });
+      return 'admin';
+    }
     try {
       const cfg = db.getGuildConfig(gid);
-      if (cfg.staff_role_id && m.roles.cache.has(cfg.staff_role_id)) return 'staff';
+      if (cfg.staff_role_id && m.roles.cache.has(cfg.staff_role_id)) {
+        permCache.set(userId, { perm: 'staff', at: Date.now() });
+        return 'staff';
+      }
     } catch {}
   }
+  permCache.set(userId, { perm: 'user', at: Date.now() });
   return 'user';
 }
 
 async function getSharedGuilds(userId, client) {
+  const cached = permCache.get(userId);
+  if (cached?.guilds && Date.now() - cached.at < 5 * 60_000) return cached.guilds;
   const out = [];
   for (const [, g] of client.guilds.cache) {
     const m = g.members.cache.get(userId) || await g.members.fetch(userId).catch(() => null);
     if (m) out.push(g);
   }
+  const entry = permCache.get(userId) || { perm: 'user', at: Date.now() };
+  permCache.set(userId, { ...entry, guilds: out, at: Date.now() });
   return out;
 }
 
@@ -87,10 +105,26 @@ function buildPrompt(permLevel, lang, opts = {}) {
 
   const tierNote = permLevel === 'user'
     ? `This is a regular community member.${nameNote}
-- To show self-assignable roles (works across ALL shared servers): return action {"type":"show_roles"}
-- To send them the home server invite: return action {"type":"show_invite"}
-- To request staff approval for something special: return action {"type":"request_approval","description":"..."}
-Never say you "can only do things in one server" — show_roles works everywhere.`
+
+WHAT YOU CAN DO:
+- Assign a specific role by name → action {"type":"give_role","role_name":"Member"}
+- Show all available roles → action {"type":"show_roles"}
+- Send the server invite link → action {"type":"show_invite"}
+- Submit a staff approval request → action {"type":"request_approval","description":"..."}
+
+WHAT YOU CANNOT DO — be honest, don't pretend:
+• Cannot delete or edit messages
+• Cannot create channels, categories, or roles from DMs
+• Cannot give admin or moderation permissions
+• Cannot read past message history
+
+CONTEXT SENSING — read the message and respond appropriately:
+• "hi" / "hello" / "what's up" / small talk → just chat back naturally, NO actions
+• "I want to join staff" → explain they should look for an application form or ask an admin; do NOT create anything
+• "give me [role]" / "I want the [role] role" → use give_role with that role name
+• "what roles can I get" / "available roles" → use show_roles
+• "invite link" / "how do I join your server" → use show_invite
+• Regular conversation → be a friendly AI companion, no need to take actions`
     : permLevel === 'staff'
       ? `This user is a staff member.${nameNote} They can approve requests. Help them manage the community.`
       : `This user is an admin or the bot owner.${nameNote} Full access and trust.`;
@@ -175,6 +209,40 @@ async function showRoleSelector(channel, userId, client, db) {
     } catch {}
   }
   await channel.send({ content: "No self-assignable roles are configured in our shared servers right now!" });
+}
+
+// ── Direct role assignment ────────────────────────────────────────────────────
+
+async function assignRoleDirectly(channel, userId, action, client, db) {
+  const wantedName = (action.role_name || action.role || '').trim();
+  if (!wantedName) { await showRoleSelector(channel, userId, client, db); return; }
+
+  const guilds = await getSharedGuilds(userId, client);
+  for (const g of guilds) {
+    try {
+      const cfg = db.getGuildConfig(g.id);
+      const roleIds = JSON.parse(cfg.self_assignable_roles || '[]');
+      if (!roleIds.length) continue;
+      if (g.roles.cache.size < 2) await g.roles.fetch().catch(() => {});
+      const role = g.roles.cache.find(r =>
+        roleIds.includes(r.id) && r.name.toLowerCase() === wantedName.toLowerCase()
+      );
+      if (!role) continue;
+      const member = await g.members.fetch(userId).catch(() => null);
+      if (!member) continue;
+      if (member.roles.cache.has(role.id)) {
+        await member.roles.remove(role.id);
+        await channel.send({ content: `Done! Removed the **${role.name}** role in **${g.name}** ✅` });
+      } else {
+        await member.roles.add(role.id);
+        await channel.send({ content: `Done! Gave you the **${role.name}** role in **${g.name}** 🎉` });
+      }
+      return;
+    } catch (e) { console.error('[pelaAI] give_role error:', e.message); }
+  }
+  // Role not found — fall back to showing the picker
+  await channel.send({ content: `I couldn't find a self-assignable role called "${wantedName}". Here's what's available:` });
+  await showRoleSelector(channel, userId, client, db);
 }
 
 // ── Approval request ──────────────────────────────────────────────────────────
@@ -309,13 +377,13 @@ async function handleDmMessage(message, client, db) {
     // Update mention counter
     serverMentions.set(userId, inviteUrl ? 0 : msgCount + 1);
     if (action?.type === 'show_roles')       await showRoleSelector(message.channel, userId, client, db);
+    if (action?.type === 'give_role')         await assignRoleDirectly(message.channel, userId, action, client, db);
     if (action?.type === 'request_approval') await sendApprovalRequest(message.channel, userId, action, client, db);
-    // show_invite action: send the home server invite link
     if (action?.type === 'show_invite') {
-      const url = await getHomeInvite(client);
+      const url = await getHomeInvite(client, db);
       await message.channel.send({ content: url
-        ? `Here's the invite to my server! 🎉 ${url}`
-        : "I couldn't generate an invite link right now — try again in a moment!" });
+        ? `Here's the link to my server! 🎉 ${url}`
+        : "I don't have a saved invite link yet — ask an admin to set one with /pela-server invite" });
     }
   } catch (e) {
     console.error('[pelaAI] DM error:', e.response?.data?.error?.message ?? e.message);
@@ -368,6 +436,37 @@ async function generateTicketGreeting(username, subject) {
   } catch { return fallback; }
 }
 
+// ── Ticket channel participation ─────────────────────────────────────────────
+
+async function handleTicketMessage(message, ticket, db) {
+  if (message.author.id !== ticket.user_id) return; // only respond to ticket opener
+  const last = ticketReplied.get(ticket.id) || 0;
+  if (Date.now() - last < 90_000) return; // max 1 reply per 90 seconds per ticket
+  if (!process.env.GROQ_API_KEY) return;
+
+  ticketReplied.set(ticket.id, Date.now());
+  const key  = `ticket:${ticket.id}`;
+  const conv = getConv(key);
+  message.channel.sendTyping().catch(() => {});
+  try {
+    const resp = await axios.post(
+      'https://api.groq.com/openai/v1/chat/completions',
+      { model: GROQ_MODEL, temperature: 0.6, max_tokens: 150,
+        messages: [
+          { role: 'system', content: `You are Pela, a helpful support bot inside a ticket. Ticket subject: "${ticket.subject}". Respond naturally to the user's message — be helpful, keep it to 1-2 sentences. The support team will also see this. If you don't know the answer, say so kindly and assure them staff will follow up.` },
+          ...conv.messages.slice(-6),
+          { role: 'user', content: message.content },
+        ],
+      },
+      { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' }, timeout: 10_000 },
+    );
+    const text = resp.data.choices[0].message.content.trim().replace(/^["']|["']$/g, '');
+    push(key, 'user',      message.content);
+    push(key, 'assistant', text);
+    await message.channel.send({ content: text });
+  } catch (e) { console.error('[pelaAI] ticket reply error:', e.message); }
+}
+
 // ── Auto-configure home server on startup ────────────────────────────────────
 
 async function ensureHomeServerConfig(client, db) {
@@ -408,4 +507,4 @@ async function ensureHomeServerConfig(client, db) {
   }
 }
 
-module.exports = { handleDmMessage, handleGuildMessage, detectPermLevel, startAutonomousPosts, postCommunityMessage, sendTicketSummary, ensureHomeServerConfig, generateTicketGreeting };
+module.exports = { handleDmMessage, handleGuildMessage, detectPermLevel, startAutonomousPosts, postCommunityMessage, sendTicketSummary, ensureHomeServerConfig, generateTicketGreeting, handleTicketMessage };

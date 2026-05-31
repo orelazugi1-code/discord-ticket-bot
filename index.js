@@ -245,7 +245,7 @@ client.on(Events.MessageCreate, async message => {
     return;
   }
 
-  // Record messages inside open tickets for transcripts
+  // Record messages inside open tickets for transcripts + Pela participates
   const ticket = db.getTicketByChannel(message.channel.id);
   if (ticket?.status === 'open') {
     db.addTicketMessage(
@@ -255,6 +255,9 @@ client.on(Events.MessageCreate, async message => {
       message.content || '[attachment/embed]',
       message.createdAt.toISOString(),
     );
+    // Pela responds to the ticket opener automatically (rate-limited internally)
+    const { handleTicketMessage } = require('./src/utils/pelaAI');
+    handleTicketMessage(message, ticket, db).catch(() => {});
   }
 
   // ── Auto-Moderation ─────────────────────────────────────────────────────────

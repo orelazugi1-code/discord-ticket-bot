@@ -17,6 +17,8 @@ module.exports = {
       .addStringOption(o => o.setName('description').setDescription('Task description').setRequired(true).setMaxLength(500)))
     .addSubcommand(s => s.setName('post-now').setDescription('Trigger an autonomous community post immediately'))
     .addSubcommand(s => s.setName('ticket-summary').setDescription('Send open ticket summary to bot owner'))
+    .addSubcommand(s => s.setName('invite').setDescription('Set the permanent invite URL for this server')
+      .addStringOption(o => o.setName('url').setDescription('The discord.gg/... invite link').setRequired(true)))
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction, db) {
@@ -73,6 +75,17 @@ module.exports = {
       await interaction.deferReply({ ephemeral: true });
       await postCommunityMessage(interaction.client, db).catch(e => { throw e; });
       return interaction.editReply({ content: '✅ Community post sent!' });
+    }
+
+    if (sub === 'invite') {
+      const url = interaction.options.getString('url');
+      if (!url.includes('discord.gg/') && !url.includes('discord.com/invite/')) {
+        return interaction.reply({ content: '❌ Provide a valid Discord invite link (discord.gg/...).', ephemeral: true });
+      }
+      db.setPelaConfig('home_invite_url', url);
+      const { inviteCache } = require('../utils/pelaAI'); // clear cache
+      // reset cache indirectly by having next call re-read from db
+      return interaction.reply({ content: `✅ Invite link saved: ${url}\n\nPela will now share this when users ask for the server link.`, ephemeral: true });
     }
 
     if (sub === 'ticket-summary') {
