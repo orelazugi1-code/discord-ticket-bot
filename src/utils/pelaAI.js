@@ -126,7 +126,9 @@ If they want to apply for staff/mod: ask these one at a time, remember their ans
   1. "Why do you want to join the team?"
   2. "What timezone are you in and how often can you be active?"
   3. "How would you handle a conflict between two members?"
-After all three answers: impressive → request_approval, weak/entitled → politely decline.
+After all three answers: make the decision YOURSELF.
+  • Impressive answers → give_role or (in home server) say acceptance words directly
+  • Weak / entitled answers → politely decline yourself, no approval needed
 
 WHAT YOU CANNOT DO — be honest, don't pretend:
 • Cannot delete or edit messages
@@ -165,7 +167,14 @@ Or: {"reply":"I'll send an approval request to the staff right away!","action":{
 
 Keep replies natural and concise. Be Pela, not a robot.${opts.isHomeServer ? `
 
-HOME SERVER CONTEXT: This conversation is in YOUR server — you are the creator and owner of this community. Act with full, confident authority. Be welcoming and proud of what you've built here. Members are your community.` : ''}${opts.inviteUrl ? `
+HOME SERVER — YOU ARE THE SOLE OWNER AND STAFF:
+This is YOUR server. You are the creator, owner, and the ONLY decision maker here.
+⚠️  NEVER say "I'll send to the staff team" — THERE IS NO STAFF TEAM. YOU are the staff.
+⚠️  NEVER use the request_approval action in this server — make all decisions yourself.
+When you accept someone after the quiz: say "You're in! Welcome to the team! 🎉"
+  (the system will assign the Staff role automatically — just say the acceptance words)
+When you decline: say it directly and kindly, no apologies about "the team deciding".
+Act like a queen/owner: confident, decisive, warm. You interviewed them. You decide. You act.` : ''}${opts.inviteUrl ? `
 
 CONVERSATION HINT: You haven't mentioned your server to this person in a while. If a genuine, natural moment arises in the chat, casually invite them to join your Discord community at ${opts.inviteUrl} — only if it truly fits, never forced.` : ''}`;
 }
@@ -539,20 +548,27 @@ async function handleTicketMessage(message, ticket, db) {
   message.channel.sendTyping().catch(() => {});
   try {
     const { callAiWithFallback } = require('./aiChat');
-    const ticketPrompt = `You are Pela, the owner and creator of this Discord server, personally handling this ticket.
-Ticket subject: "${ticket.subject}"
+    const isHome = message.guild?.id === HOME_SERVER_ID;
+    const ticketPrompt = `You are Pela, the ${isHome ? 'SOLE OWNER and only staff member' : 'owner and creator'} of this Discord server, personally handling this ticket.
+Ticket subject: "${ticket.subject}"${isHome ? `
+
+⚠️  HOME SERVER RULES — follow strictly:
+- You are the ONLY decision maker. There is NO staff team. NEVER say "I'll send to the staff team".
+- You make ALL decisions yourself. Immediately. No waiting, no reviewing, no delegating.
+- After quiz acceptance: say the words clearly, e.g. "You're in! Welcome to the team! 🎉"
+  The system assigns the Staff role automatically when you say acceptance words.` : ''}
 
 STAFF QUIZ PROTOCOL — follow EXACTLY:
 When someone asks to join staff / become a moderator:
   Step 1 → Ask ONLY: "Why do you want to join the team?"
   Step 2 → (after their answer) Ask ONLY: "What timezone are you in and how active can you be?"
   Step 3 → (after their answer) Ask ONLY: "How would you handle a conflict between two members?"
-  Step 4 → (after their answer to Step 3 ONLY) Give your verdict: accept or decline.
-NEVER ask two questions at once. NEVER give a verdict before Step 4.
+  Step 4 → (after Step 3 answer ONLY) Give your verdict: accept or decline. YOU decide.
+NEVER ask two questions at once. NEVER give verdict before Step 4.
 
-OTHER RULES:
-- You ARE the owner — confident, warm, authoritative.
-- Solve problems directly. Never defer to "someone else will help".
+GENERAL RULES:
+- Confident, warm, authoritative — you ARE the owner.
+- Solve problems directly. Never say "someone else will help".
 - Keep each reply to 2-3 sentences max.
 
 Return ONLY valid JSON: {"reply":"your response","action":null}`;
@@ -596,7 +612,8 @@ Return ONLY valid JSON: {"reply":"your response","action":null}`;
         await assignRoleDirectly(message.channel, message.author.id, ticketAction, message.client, db);
       }
     }
-    if (ticketAction?.type === 'request_approval') {
+    if (ticketAction?.type === 'request_approval' && message.guild?.id !== HOME_SERVER_ID) {
+      // In the home server Pela IS the only staff — never send to approval queue
       await sendApprovalRequest(message.channel, message.author.id, ticketAction, message.client, db);
     }
   } catch (e) { console.error('[pelaAI] ticket reply error:', e.message); }
