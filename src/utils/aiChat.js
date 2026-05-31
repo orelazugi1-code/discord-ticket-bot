@@ -801,4 +801,4 @@ async function continueConvFromWizard(interaction, db, userInput, guildId, userI
   }
 }
 
-module.exports = { handleGuildMessage, handleDmMessage, clearConv, continueConvFromWizard };
+module.exports = { handleGuildMessage, handleDmMessage, clearConv, continueConvFromWizard, callAiWithFallback };

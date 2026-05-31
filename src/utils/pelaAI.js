@@ -154,21 +154,12 @@ HOME SERVER CONTEXT: This conversation is in YOUR server — you are the creator
 CONVERSATION HINT: You haven't mentioned your server to this person in a while. If a genuine, natural moment arises in the chat, casually invite them to join your Discord community at ${opts.inviteUrl} — only if it truly fits, never forced.` : ''}`;
 }
 
-// ── Groq call ─────────────────────────────────────────────────────────────────
+// ── AI call with multi-provider fallback (Groq → Gemini → Mistral → OpenRouter) ──
+// Lazy-require aiChat to avoid circular dependency
 
-async function callPelaGroq(prompt, history, userText) {
-  const resp = await axios.post(
-    'https://api.groq.com/openai/v1/chat/completions',
-    {
-      model:           GROQ_MODEL,
-      temperature:     0.75,
-      max_tokens:      512,
-      response_format: { type: 'json_object' },
-      messages:        [{ role: 'system', content: prompt }, ...history, { role: 'user', content: userText }],
-    },
-    { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' }, timeout: 20_000 },
-  );
-  return resp.data.choices[0].message.content;
+async function callPelaAI(prompt, history, userText) {
+  const { callAiWithFallback } = require('./aiChat');
+  return callAiWithFallback(prompt, history, userText);
 }
 
 function parseResp(raw) {
@@ -369,7 +360,7 @@ async function handleDmMessage(message, client, db) {
   message.channel.sendTyping().catch(() => {});
 
   try {
-    const raw = await callPelaGroq(buildPrompt(permLevel, conv.lang, opts), conv.messages, message.content);
+    const raw = await callPelaAI(buildPrompt(permLevel, conv.lang, opts), conv.messages, message.content);
     const { reply, action } = parseResp(raw);
     push(key, 'user', message.content);
     push(key, 'assistant', reply);
@@ -404,12 +395,13 @@ async function handleGuildMessage(message, client, db, permLevel) {
   message.channel.sendTyping().catch(() => {});
   try {
     const isHomeServer = message.guild.id === HOME_SERVER_ID;
-    const raw = await callPelaGroq(buildPrompt(permLevel || 'user', conv.lang, { isHomeServer }), conv.messages, userText);
+    const raw = await callPelaAI(buildPrompt(permLevel || 'user', conv.lang, { isHomeServer }), conv.messages, userText);
     const { reply, action } = parseResp(raw);
     push(key, 'user', userText);
     push(key, 'assistant', reply);
     await message.reply({ content: reply });
     if (action?.type === 'show_roles')       await showRoleSelector(message.channel, userId, client, db);
+    if (action?.type === 'give_role')         await assignRoleDirectly(message.channel, userId, action, client, db);
     if (action?.type === 'request_approval') await sendApprovalRequest(message.channel, userId, action, client, db);
   } catch (e) {
     console.error('[pelaAI] guild error:', e.message);
@@ -449,18 +441,11 @@ async function handleTicketMessage(message, ticket, db) {
   const conv = getConv(key);
   message.channel.sendTyping().catch(() => {});
   try {
-    const resp = await axios.post(
-      'https://api.groq.com/openai/v1/chat/completions',
-      { model: GROQ_MODEL, temperature: 0.6, max_tokens: 150,
-        messages: [
-          { role: 'system', content: `You are Pela, a helpful support bot inside a ticket. Ticket subject: "${ticket.subject}". Respond naturally to the user's message — be helpful, keep it to 1-2 sentences. The support team will also see this. If you don't know the answer, say so kindly and assure them staff will follow up.` },
-          ...conv.messages.slice(-6),
-          { role: 'user', content: message.content },
-        ],
-      },
-      { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' }, timeout: 10_000 },
-    );
-    const text = resp.data.choices[0].message.content.trim().replace(/^["']|["']$/g, '');
+    const { callAiWithFallback } = require('./aiChat');
+    const ticketPrompt = `You are Pela, a helpful support bot inside a ticket. Ticket subject: "${ticket.subject}". Respond naturally — be helpful and brief (1-2 sentences). Staff will also assist. If unsure, say so and assure them staff will follow up. Reply as plain text (no JSON).`;
+    const rawText = await callAiWithFallback(ticketPrompt, conv.messages.slice(-6), message.content);
+    // Strip any JSON wrapper the model might add
+    const text = (() => { try { const p = JSON.parse(rawText); return p.reply || rawText; } catch { return rawText; } })().trim().replace(/^["']|["']$/g, '');
     push(key, 'user',      message.content);
     push(key, 'assistant', text);
     await message.channel.send({ content: text });
