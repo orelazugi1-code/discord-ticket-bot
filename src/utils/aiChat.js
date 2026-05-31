@@ -164,6 +164,7 @@ ${ownerSection}
   {"type":"ask_roles","prompt":"Which roles should have access?","purpose":"support_roles"}
   {"type":"ask_confirm","description":"Will create in #support-tickets","fields":[{"name":"Channel","value":"#support-tickets","inline":true}]}
   {"type":"start_form_wizard","title":"Application Form"}
+  {"type":"start_ticket_wizard","title":"🎫 Support Tickets","message":"Click to open"}
 
 ━━━━ RULES ━━━━
 1. Respond in the SAME LANGUAGE as the admin (Hebrew → Hebrew, English → English).
@@ -171,7 +172,9 @@ ${ownerSection}
 3. Channel/category names include a thematic emoji unless they already exist in the list.
 4. Use EXACT names from the server state for existing channels/roles/categories.
 5. NEVER delete unless admin explicitly says "delete" / "remove" / "מחק" / "הסר".
-6. Return ONLY valid JSON — nothing outside the JSON object.`;
+6. Return ONLY valid JSON — nothing outside the JSON object.
+7. Prefer start_ticket_wizard over setup_ticket — it guides the admin step by step with Discord UI.
+8. Prefer start_form_wizard over setup_form — same reason.`;
 }
 
 // ── Groq ──────────────────────────────────────────────────────────────────────
@@ -336,8 +339,15 @@ async function handleWizardAction(act, guild, channel, userId, done, fails) {
     return true;
   }
   if (act.type === 'start_form_wizard') {
-    wiz.setW(guild.id, userId, { type: 'form', lang, pendingField: 'questions', data: { title: act.title || '', questions: [] } });
-    await channel.send(wiz.formBuilderMsg(guild.id, userId, lang, act.title, []));
+    const fw = { type: 'form', step: 'questions', lang, data: { title: act.title || 'Application Form', button_label: act.button_label || 'Apply', description: act.description || '', questions: [] } };
+    wiz.setW(guild.id, userId, fw);
+    await channel.send(wiz.buildStepMessage(guild, guild.id, userId, fw));
+    return true;
+  }
+  if (act.type === 'start_ticket_wizard') {
+    const tw = { type: 'ticket', step: 'channel', lang, data: { title: act.title || '🎫 Support Tickets', message: act.message || 'Click to open a ticket.', categories: [], support_role_ids: [] } };
+    wiz.setW(guild.id, userId, tw);
+    await channel.send(wiz.buildStepMessage(guild, guild.id, userId, tw));
     return true;
   }
   return false;
@@ -348,7 +358,7 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
 
   for (const act of actions) {
     // Wizard UI actions — send interactive component then stop processing
-    if (['ask_channel','ask_roles','ask_confirm','start_form_wizard'].includes(act.type)) {
+    if (['ask_channel','ask_roles','ask_confirm','start_form_wizard','start_ticket_wizard'].includes(act.type)) {
       const sent = await handleWizardAction(act, guild, channel, userId, done, fails);
       if (sent) break;
       continue;
@@ -661,7 +671,7 @@ async function runAiRound(convKey, guild, userText, db, isOwner, channel, userId
 
     // Auto-retry once when every action failed (and no wizard component was sent)
     const allFailed = done.length === 0 && fails.length > 0;
-    const hasWizard = actions.some(a => ['ask_channel','ask_roles','ask_confirm','start_form_wizard'].includes(a.type));
+    const hasWizard = actions.some(a => ['ask_channel','ask_roles','ask_confirm','start_form_wizard','start_ticket_wizard'].includes(a.type));
     if (allFailed && !hasWizard) {
       try {
         const retryInput = 'The following actions all failed: ' + fails.join(', ') + '. Try a completely different approach automatically without asking the user.';
