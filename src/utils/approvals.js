@@ -66,8 +66,9 @@ async function handleTaskButton(interaction, db) {
     if (!canComplete) return interaction.reply({ content: '❌ Only the assigned person or an admin can complete this task.', ephemeral: true });
 
     db.updatePelaTask(taskId, 'completed');
-    const newEmbed = EmbedBuilder.from(interaction.message.embeds[0]).setColor(0x57F287)
-      .spliceFields(1, 1, { name: 'Status', value: '✅ Completed', inline: true });
+    const oldFields = interaction.message.embeds[0]?.fields || [];
+    const updFields = oldFields.map((f, i) => i === 1 ? { name: 'Status', value: '✅ Completed', inline: true } : f);
+    const newEmbed = EmbedBuilder.from(interaction.message.embeds[0]).setColor(0x57F287).setFields(updFields);
     await interaction.update({ embeds: [newEmbed], components: [] });
 
     if (task.created_by && task.created_by !== interaction.user.id) {

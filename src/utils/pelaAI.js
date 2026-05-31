@@ -26,7 +26,7 @@ function getConv(key) {
 function push(key, role, content) {
   const c = getConv(key);
   c.messages.push({ role, content });
-  if (c.messages.length > 20) c.messages.splice(0, 20);
+  if (c.messages.length > 20) c.messages.splice(0, c.messages.length - 20);
 }
 
 // ── Permission detection ──────────────────────────────────────────────────────
@@ -290,4 +290,4 @@ async function handleGuildMessage(message, client, db, permLevel) {
   } finally { clearInterval(typingPulse); }
 }
 
-module.exports = { handleDmMessage, handleGuildMessage, detectPermLevel, startAutonomousPosts, sendTicketSummary };
+module.exports = { handleDmMessage, handleGuildMessage, detectPermLevel, startAutonomousPosts, postCommunityMessage, sendTicketSummary };
