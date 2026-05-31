@@ -260,6 +260,13 @@ async function handleModal(interaction, db) {
     const mentions = supportRoleIds.map(id => `<@&${id}>`).join(' ');
     await ticketChannel.send({ content: `${user} ${mentions}`.trim(), embeds: [embed], components: [row] });
 
+    // Pela's automatic greeting in the new ticket channel
+    try {
+      const { generateTicketGreeting } = require('../utils/pelaAI');
+      const greeting = await generateTicketGreeting(user.username, subject);
+      if (greeting) await ticketChannel.send({ content: greeting });
+    } catch {}
+
     if (config.log_channel_id) {
       const logCh = guild.channels.cache.get(config.log_channel_id);
       if (logCh) {

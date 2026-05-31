@@ -83,15 +83,17 @@ async function getSharedGuilds(userId, client) {
 
 function buildPrompt(permLevel, lang, opts = {}) {
   const langLine = lang === 'he' ? '🇮🇱 Respond in Hebrew.' : 'Respond in English.';
+  const nameNote = opts.displayName ? `\n• The person you're talking to is called **${opts.displayName}** — use their name naturally, never titles like 'המנהל' or 'admin'.` : '';
 
   const tierNote = permLevel === 'user'
-    ? `This is a regular community member. They CANNOT execute admin actions directly.
-If they want self-assignable roles → return action {"type":"show_roles"}
-If they request something needing admin approval → return action {"type":"request_approval","description":"what they want"}
-Be honest: "I'd need staff approval for that — want me to send the request?"`
+    ? `This is a regular community member.${nameNote}
+- To show self-assignable roles (works across ALL shared servers): return action {"type":"show_roles"}
+- To send them the home server invite: return action {"type":"show_invite"}
+- To request staff approval for something special: return action {"type":"request_approval","description":"..."}
+Never say you "can only do things in one server" — show_roles works everywhere.`
     : permLevel === 'staff'
-      ? 'This user is a staff member. They can approve requests. Help them manage the community.'
-      : 'This user is an admin or the bot owner. Full access and trust.';
+      ? `This user is a staff member.${nameNote} They can approve requests. Help them manage the community.`
+      : `This user is an admin or the bot owner.${nameNote} Full access and trust.`;
 
   return `${langLine}
 
@@ -152,6 +154,9 @@ async function showRoleSelector(channel, userId, client, db) {
     try {
       const cfg      = db.getGuildConfig(g.id);
       const roleIds  = JSON.parse(cfg.self_assignable_roles || '[]');
+      if (!roleIds.length) continue;
+      // Fetch roles if not in cache
+      if (g.roles.cache.size < 2) await g.roles.fetch().catch(() => {});
       const roles    = roleIds.map(id => g.roles.cache.get(id)).filter(Boolean).slice(0, 25);
       if (!roles.length) continue;
       const member   = g.members.cache.get(userId) || await g.members.fetch(userId).catch(() => null);
@@ -230,13 +235,16 @@ async function generateCommunityPost() {
 async function postCommunityMessage(client, db) {
   const serverId  = db.getPelaConfig('pela_server_id');
   const channelId = db.getPelaConfig('pela_updates_channel_id');
-  if (!serverId || !channelId) return;
-  const ch = client.guilds.cache.get(serverId)?.channels.cache.get(channelId);
-  if (!ch) return;
+  if (!serverId || !channelId) { console.log('[pelaAI] No home server/channel configured for posts'); return; }
+  const guild = client.guilds.cache.get(serverId);
+  if (!guild) { console.log('[pelaAI] Home guild not in cache:', serverId); return; }
+  const ch = guild.channels.cache.get(channelId) || await guild.channels.fetch(channelId).catch(() => null);
+  if (!ch) { console.log('[pelaAI] Updates channel not found:', channelId); return; }
   const text = await generateCommunityPost();
   if (text) {
     await ch.send({ content: text }).catch(e => console.error('[pelaAI] post failed:', e.message));
     db.setPelaConfig('last_autonomous_post', Date.now().toString());
+    console.log('[pelaAI] Autonomous post sent to', guild.name);
   }
 }
 
@@ -246,7 +254,7 @@ function startAutonomousPosts(client, db) {
     const delay = (4 + Math.random() * 4) * 3_600_000;
     setTimeout(async () => { await postCommunityMessage(client, db).catch(() => {}); schedule(); }, delay);
   };
-  setTimeout(schedule, 3_600_000);
+  setTimeout(schedule, 3 * 60_000); // first post after 3 minutes
 }
 
 // ── Daily ticket summary to owner ─────────────────────────────────────────────
@@ -276,17 +284,18 @@ async function handleDmMessage(message, client, db) {
   const conv    = getConv(key);
   if (conv.lang === 'en' && /[֐-׿]/.test(message.content)) conv.lang = 'he';
 
-  const permLevel   = await detectPermLevel(userId, client, db);
+  const permLevel    = await detectPermLevel(userId, client, db);
   const sharedGuilds = await getSharedGuilds(userId, client);
   const inHomeServer = sharedGuilds.some(g => g.id === HOME_SERVER_ID);
+  const displayName  = message.author.globalName || message.author.username;
 
   // Occasionally hint at mentioning the server (every 8-13 messages, only if not already in it)
-  const msgCount  = serverMentions.get(userId) || 0;
-  const threshold = 8 + Math.floor(Math.random() * 6);
+  const msgCount    = serverMentions.get(userId) || 0;
+  const threshold   = 8 + Math.floor(Math.random() * 6);
   const wantMention = !inHomeServer && msgCount >= threshold;
-  const inviteUrl = wantMention ? await getHomeInvite(client) : null;
+  const inviteUrl   = wantMention ? await getHomeInvite(client) : null;
 
-  const opts = { isHomeServer: inHomeServer, inviteUrl };
+  const opts = { isHomeServer: inHomeServer, inviteUrl, displayName };
 
   const typingPulse = setInterval(() => message.channel.sendTyping().catch(() => {}), 9000);
   message.channel.sendTyping().catch(() => {});
@@ -296,11 +305,18 @@ async function handleDmMessage(message, client, db) {
     const { reply, action } = parseResp(raw);
     push(key, 'user', message.content);
     push(key, 'assistant', reply);
-    await message.reply({ content: reply });
+    await message.channel.send({ content: reply }); // send() more reliable than reply() in DMs
     // Update mention counter
     serverMentions.set(userId, inviteUrl ? 0 : msgCount + 1);
     if (action?.type === 'show_roles')       await showRoleSelector(message.channel, userId, client, db);
     if (action?.type === 'request_approval') await sendApprovalRequest(message.channel, userId, action, client, db);
+    // show_invite action: send the home server invite link
+    if (action?.type === 'show_invite') {
+      const url = await getHomeInvite(client);
+      await message.channel.send({ content: url
+        ? `Here's the invite to my server! 🎉 ${url}`
+        : "I couldn't generate an invite link right now — try again in a moment!" });
+    }
   } catch (e) {
     console.error('[pelaAI] DM error:', e.response?.data?.error?.message ?? e.message);
     await message.reply({ content: "Oops, something went wrong on my end! Try again in a moment 🙏" }).catch(() => {});
@@ -330,6 +346,26 @@ async function handleGuildMessage(message, client, db, permLevel) {
   } catch (e) {
     console.error('[pelaAI] guild error:', e.message);
   } finally { clearInterval(typingPulse); }
+}
+
+// ── Ticket greeting ──────────────────────────────────────────────────────────
+
+async function generateTicketGreeting(username, subject) {
+  const fallback = `👋 Hey **${username}**! I'm Pela — the support team will be with you shortly. Feel free to add any extra details in the meantime!`;
+  if (!process.env.GROQ_API_KEY) return fallback;
+  try {
+    const resp = await axios.post(
+      'https://api.groq.com/openai/v1/chat/completions',
+      { model: GROQ_MODEL, temperature: 0.75, max_tokens: 80,
+        messages: [
+          { role: 'system', content: `You are Pela, a friendly bot. Write a SHORT warm 1-sentence greeting for a user called "${username}" who just opened a support ticket about "${subject}". Tell them the team will be with them soon. Sound human, no emojis spam.` },
+          { role: 'user',   content: 'Write the greeting.' },
+        ],
+      },
+      { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' }, timeout: 8_000 },
+    );
+    return resp.data.choices[0].message.content.trim().replace(/^["']|["']$/g, '');
+  } catch { return fallback; }
 }
 
 // ── Auto-configure home server on startup ────────────────────────────────────
@@ -372,4 +408,4 @@ async function ensureHomeServerConfig(client, db) {
   }
 }
 
-module.exports = { handleDmMessage, handleGuildMessage, detectPermLevel, startAutonomousPosts, postCommunityMessage, sendTicketSummary, ensureHomeServerConfig };
+module.exports = { handleDmMessage, handleGuildMessage, detectPermLevel, startAutonomousPosts, postCommunityMessage, sendTicketSummary, ensureHomeServerConfig, generateTicketGreeting };
