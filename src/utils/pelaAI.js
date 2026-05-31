@@ -469,10 +469,29 @@ async function handleTicketMessage(message, ticket, db) {
   message.channel.sendTyping().catch(() => {});
   try {
     const { callAiWithFallback } = require('./aiChat');
-    const ticketPrompt = `You are Pela, a helpful support bot inside a ticket. Ticket subject: "${ticket.subject}". Respond naturally — be helpful and brief (1-2 sentences). Staff will also assist. If unsure, say so and assure them staff will follow up. Reply as plain text (no JSON).`;
+    // Pela acts as the server owner — confident, helpful, authoritative
+    const ticketPrompt = `You are Pela, the owner and creator of this Discord server. You are personally handling this support ticket.
+Ticket subject: "${ticket.subject}"
+Your role:
+- You ARE the owner — speak with confidence and authority, not as a bot or helpdesk agent
+- Actually solve the problem — never say "the support team will contact you" or "someone will assist you"
+- If they want to join staff: run the 3-question quiz yourself (motivation → availability → conflict handling) and decide
+- If there's a technical issue: guide them step by step yourself
+- Be warm, direct, and decisive — like a server owner would be
+- Keep each reply to 2-3 sentences max
+Reply as PLAIN TEXT only — no JSON, no code blocks.`;
     const rawText = await callAiWithFallback(ticketPrompt, conv.messages.slice(-6), message.content);
-    // Strip any JSON wrapper the model might add
-    const text = (() => { try { const p = JSON.parse(rawText); return p.reply || rawText; } catch { return rawText; } })().trim().replace(/^["']|["']$/g, '');
+    // callAiWithFallback uses json_object mode for some providers — extract the text robustly
+    const text = (() => {
+      try {
+        const parsed = JSON.parse(rawText);
+        // Try every common field name the model might use
+        return parsed.reply || parsed.message || parsed.content || parsed.text ||
+               parsed.response || parsed.answer ||
+               Object.values(parsed).find(v => typeof v === 'string' && v.length > 1) ||
+               rawText;
+      } catch { return rawText; }
+    })().trim().replace(/^["'`]|["'`]$/g, '');
     push(key, 'user',      message.content);
     push(key, 'assistant', text);
     await message.channel.send({ content: text });
