@@ -503,6 +503,28 @@ async function assignPrivilegedRole(channel, guild, userId, roleName) {
   }
 }
 
+// ── Staff role: find or create, then assign directly ────────────────────────
+
+async function assignStaffRole(guild, userId) {
+  if (guild.roles.cache.size < 2) await guild.roles.fetch().catch(() => {});
+  const NAMES = ['staff', 'support', 'team', 'צוות'];
+  let role = guild.roles.cache.find(r => NAMES.includes(r.name.toLowerCase()));
+  if (!role) {
+    role = await guild.roles.create({
+      name:        'Staff',
+      color:       0x3498DB, // blue
+      hoist:       true,
+      mentionable: true,
+      permissions: [PermissionFlagsBits.ManageMessages, PermissionFlagsBits.KickMembers],
+      reason:      'Pela: staff role created after quiz acceptance',
+    });
+  }
+  const member = await guild.members.fetch(userId).catch(() => null);
+  if (!member) return null;
+  await member.roles.add(role, 'Pela: assigned after quiz acceptance');
+  return role;
+}
+
 // ── Ticket channel participation ─────────────────────────────────────────────
 
 async function handleTicketMessage(message, ticket, db) {
@@ -517,20 +539,23 @@ async function handleTicketMessage(message, ticket, db) {
   message.channel.sendTyping().catch(() => {});
   try {
     const { callAiWithFallback } = require('./aiChat');
-    const ticketPrompt = `You are Pela, the owner and creator of this Discord server, personally handling this support ticket.
+    const ticketPrompt = `You are Pela, the owner and creator of this Discord server, personally handling this ticket.
 Ticket subject: "${ticket.subject}"
 
-RULES:
-- You ARE the owner — confident, authoritative, warm. Never defer to "someone else will help".
-- Solve problems directly. Guide step by step if needed.
-- Staff quiz (run over multiple messages): 1) motivation 2) availability 3) conflict handling — then decide.
-- After quiz: if accepting → return action give_role with the staff role name. If rejecting → decline kindly.
+STAFF QUIZ PROTOCOL — follow EXACTLY:
+When someone asks to join staff / become a moderator:
+  Step 1 → Ask ONLY: "Why do you want to join the team?"
+  Step 2 → (after their answer) Ask ONLY: "What timezone are you in and how active can you be?"
+  Step 3 → (after their answer) Ask ONLY: "How would you handle a conflict between two members?"
+  Step 4 → (after their answer to Step 3 ONLY) Give your verdict: accept or decline.
+NEVER ask two questions at once. NEVER give a verdict before Step 4.
+
+OTHER RULES:
+- You ARE the owner — confident, warm, authoritative.
+- Solve problems directly. Never defer to "someone else will help".
 - Keep each reply to 2-3 sentences max.
 
-Return ONLY valid JSON:
-{"reply":"your response text","action":null}
-OR when assigning a role after quiz acceptance:
-{"reply":"Welcome to the team! 🎉 You're now Staff!","action":{"type":"give_role","role_name":"Staff"}}`;
+Return ONLY valid JSON: {"reply":"your response","action":null}`;
 
     const rawText = await callAiWithFallback(ticketPrompt, conv.messages.slice(-6), message.content);
     // Parse reply text AND any action from the JSON response
@@ -547,14 +572,27 @@ OR when assigning a role after quiz acceptance:
     push(key, 'user',      message.content);
     push(key, 'assistant', text);
     await message.channel.send({ content: text });
-    // Execute any action Pela decided on (e.g., give_role after quiz acceptance)
+
+    // Track quiz question count — increment when Pela asked a question this turn
+    if (/\?/.test(text)) conv.quizQ = (conv.quizQ || 0) + 1;
+
+    // Code-driven acceptance: detect via keywords, require >= 3 questions first
+    const ACCEPT = /welcome to the team|you'?re? (now )?(in|accepted|staff|on the team)|you'?ve? been accepted|congratulations.*team|you'?re? approved/i;
+    if (ACCEPT.test(text) && message.guild && (conv.quizQ || 0) >= 3) {
+      try {
+        const staffRole = await assignStaffRole(message.guild, message.author.id);
+        if (staffRole) {
+          await message.channel.send({ content: `✅ <@${message.author.id}> has been given the **${staffRole.name}** role. Welcome to the team! 🎉` });
+          conv.quizQ = 0; // reset for future use
+        }
+      } catch (e) { console.error('[pelaAI] assignStaffRole error:', e.message); }
+    }
+
+    // Also handle any explicit action the AI returned (non-staff or fallback)
     if (ticketAction?.type === 'give_role') {
-      const rName = ticketAction.role_name || ticketAction.role || 'Staff';
-      const isPriv = STAFF_ROLE_NAMES.some(s => rName.toLowerCase().includes(s));
-      if (isPriv && message.guild) {
-        // Staff/privileged role: find/create with permissions, bypass self-assignable list
-        await assignPrivilegedRole(message.channel, message.guild, message.author.id, rName);
-      } else {
+      const rName = ticketAction.role_name || ticketAction.role || '';
+      const isStaff = STAFF_ROLE_NAMES.some(s => rName.toLowerCase().includes(s));
+      if (!isStaff) { // staff already handled above; this covers VIP/Member from ticket context
         await assignRoleDirectly(message.channel, message.author.id, ticketAction, message.client, db);
       }
     }
