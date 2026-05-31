@@ -1,9 +1,10 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection, Events, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Events, REST, Routes, PermissionFlagsBits } = require('discord.js');
 const fs   = require('fs');
 const path = require('path');
 const db   = require('./src/database');
 const { calculateLevel } = require('./src/utils/levels');
+const { checkAndSendUpdate } = require('./src/utils/botUpdates');
 
 const client = new Client({
   intents: [
@@ -82,6 +83,19 @@ client.once(Events.ClientReady, async c => {
       db.deleteTempRole(tr.id);
     }
   }, 3_600_000);
+
+  // Bot updates channel
+  await checkAndSendUpdate(client, db).catch(err => console.error('[BotUpdates]', err.message));
+
+  // Pela autonomous community posts (every 4-8 hours)
+  const { startAutonomousPosts } = require('./src/utils/pelaAI');
+  startAutonomousPosts(client, db);
+
+  // Daily ticket summary to owner
+  setInterval(async () => {
+    const { sendTicketSummary } = require('./src/utils/pelaAI');
+    await sendTicketSummary(client, db).catch(() => {});
+  }, 24 * 3_600_000);
 });
 
 // ── Welcome / Goodbye ─────────────────────────────────────────────────────────
@@ -148,6 +162,20 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
+    // ── Pela: approval, self-role and task buttons
+    if (interaction.isButton() && interaction.customId && interaction.customId.startsWith('aprv:')) {
+      const { handleApprovalButton } = require('./src/utils/approvals');
+      await handleApprovalButton(interaction, db); return;
+    }
+    if (interaction.isButton() && interaction.customId && interaction.customId.startsWith('task:')) {
+      const { handleTaskButton } = require('./src/utils/approvals');
+      await handleTaskButton(interaction, db); return;
+    }
+    if (interaction.isStringSelectMenu() && interaction.customId && interaction.customId.startsWith('self_role:')) {
+      const { handleSelfRoleSelect } = require('./src/utils/approvals');
+      await handleSelfRoleSelect(interaction, db, client); return;
+    }
+
     // ── Wizard interactions (AI chat interactive components) ────────────────────
     if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isRoleSelectMenu()) && interaction.customId?.startsWith('wiz:')) {
       const { handleWizardInteraction } = require('./src/utils/wizard');
@@ -183,10 +211,16 @@ client.on(Events.InteractionCreate, async interaction => {
 client.on(Events.MessageCreate, async message => {
   if (message.author.bot) return;
 
-  // ── DM: forward to AI chat ─────────────────────────────────────────────────
+  // ── DM routing: admin/owner → server mgmt AI; everyone else → Pela personality
   if (!message.guild) {
-    const { handleDmMessage } = require('./src/utils/aiChat');
-    await handleDmMessage(message, client, db).catch(console.error);
+    const { detectPermLevel, handleDmMessage: pelaDm } = require('./src/utils/pelaAI');
+    const perm = await detectPermLevel(message.author.id, client, db).catch(() => 'user');
+    if (perm === 'owner' || perm === 'admin') {
+      const { handleDmMessage: aiDm } = require('./src/utils/aiChat');
+      await aiDm(message, client, db).catch(console.error);
+    } else {
+      await pelaDm(message, client, db).catch(console.error);
+    }
     return;
   }
 
@@ -195,8 +229,16 @@ client.on(Events.MessageCreate, async message => {
   const isAiCh     = aiCfg.ai_chat_channel_id && message.channel.id === aiCfg.ai_chat_channel_id;
   const isMentioned = message.mentions.users.has(client.user.id);
   if (isAiCh || isMentioned) {
-    const { handleGuildMessage } = require('./src/utils/aiChat');
-    await handleGuildMessage(message, db).catch(console.error);
+    const isAdminUser = message.author.id === '1266854019767341107'
+                     || !!message.member?.permissions.has(PermissionFlagsBits.Administrator);
+    if (isAdminUser) {
+      const { handleGuildMessage } = require('./src/utils/aiChat');
+      await handleGuildMessage(message, db).catch(console.error);
+    } else {
+      const { handleGuildMessage: pelaGuild, detectPermLevel } = require('./src/utils/pelaAI');
+      const perm = await detectPermLevel(message.author.id, client, db).catch(() => 'user');
+      await pelaGuild(message, client, db, perm).catch(console.error);
+    }
     return;
   }
 

@@ -190,6 +190,33 @@ db.exec(`
     approved_by TEXT NOT NULL,
     approved_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS pela_config (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS pending_approvals (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id    TEXT NOT NULL,
+    user_id     TEXT NOT NULL,
+    action_type TEXT NOT NULL DEFAULT 'custom',
+    action_data TEXT NOT NULL DEFAULT '{}',
+    description TEXT NOT NULL DEFAULT '',
+    status      TEXT DEFAULT 'pending',
+    resolved_by TEXT,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS pela_tasks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id    TEXT NOT NULL,
+    description TEXT NOT NULL,
+    assigned_to TEXT,
+    created_by  TEXT,
+    status      TEXT DEFAULT 'open',
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // ── Migrations ────────────────────────────────────────────────────────────────
@@ -220,6 +247,9 @@ db.exec(`
   `ALTER TABLE guild_config ADD COLUMN extra_support_roles TEXT`,
   `ALTER TABLE ticket_questions ADD COLUMN category_id INTEGER DEFAULT NULL`,
   `ALTER TABLE guild_config ADD COLUMN ai_chat_channel_id TEXT`,
+  `ALTER TABLE guild_config ADD COLUMN staff_role_id TEXT`,
+  `ALTER TABLE guild_config ADD COLUMN staff_channel_id TEXT`,
+  `ALTER TABLE guild_config ADD COLUMN self_assignable_roles TEXT DEFAULT '[]'`,
 ].forEach(sql => { try { db.exec(sql); } catch {} });
 
 // ── Prepared statements ───────────────────────────────────────────────────────
@@ -323,6 +353,18 @@ const stmts = {
   removeCloneApprovalStmt:   db.prepare('DELETE FROM clone_approved_users WHERE user_id = ?'),
   isCloneApprovedStmt:       db.prepare('SELECT 1 FROM clone_approved_users WHERE user_id = ?'),
   listCloneApprovedStmt:     db.prepare('SELECT * FROM clone_approved_users ORDER BY approved_at DESC'),
+
+  getPelaConfigStmt:         db.prepare('SELECT value FROM pela_config WHERE key = ?'),
+  setPelaConfigStmt:         db.prepare('INSERT OR REPLACE INTO pela_config (key, value) VALUES (?, ?)'),
+
+  createApprovalStmt:        db.prepare('INSERT INTO pending_approvals (guild_id, user_id, action_type, action_data, description) VALUES (?, ?, ?, ?, ?)'),
+  getApprovalStmt:           db.prepare('SELECT * FROM pending_approvals WHERE id = ?'),
+  updateApprovalStmt:        db.prepare('UPDATE pending_approvals SET status = ?, resolved_by = ? WHERE id = ?'),
+
+  createPelaTaskStmt:        db.prepare('INSERT INTO pela_tasks (guild_id, description, assigned_to, created_by) VALUES (?, ?, ?, ?)'),
+  getPelaTaskStmt:           db.prepare('SELECT * FROM pela_tasks WHERE id = ?'),
+  updatePelaTaskStmt:        db.prepare("UPDATE pela_tasks SET status = ? WHERE id = ?"),
+  getPelaTasksByGuildStmt:   db.prepare("SELECT * FROM pela_tasks WHERE guild_id = ? ORDER BY created_at DESC"),
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -511,4 +553,22 @@ module.exports = {
   removeCloneApproval: userId => stmts.removeCloneApprovalStmt.run(userId),
   isCloneApproved:     userId => !!stmts.isCloneApprovedStmt.get(userId),
   listCloneApproved:   () => stmts.listCloneApprovedStmt.all(),
+
+  getPelaConfig: (key) => stmts.getPelaConfigStmt.get(key)?.value ?? null,
+  setPelaConfig: (key, value) => stmts.setPelaConfigStmt.run(key, String(value)),
+
+  createPendingApproval: (guildId, userId, actionType, actionData, description) => {
+    const r = stmts.createApprovalStmt.run(guildId, userId, actionType, actionData, description);
+    return Number(r.lastInsertRowid);
+  },
+  getPendingApproval:    id => stmts.getApprovalStmt.get(id),
+  updatePendingApproval: (id, status, resolvedBy) => stmts.updateApprovalStmt.run(status, resolvedBy ?? null, id),
+
+  createPelaTask: (guildId, description, assignedTo, createdBy) => {
+    const r = stmts.createPelaTaskStmt.run(guildId, description, assignedTo ?? null, createdBy ?? null);
+    return Number(r.lastInsertRowid);
+  },
+  getPelaTask:    id => stmts.getPelaTaskStmt.get(id),
+  updatePelaTask: (id, status) => stmts.updatePelaTaskStmt.run(status, id),
+  getPelaTasks:   guildId => stmts.getPelaTasksByGuildStmt.all(guildId),
 };
