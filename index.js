@@ -87,8 +87,9 @@ client.once(Events.ClientReady, async c => {
   // Bot updates channel
   await checkAndSendUpdate(client, db).catch(err => console.error('[BotUpdates]', err.message));
 
-  // Pela autonomous community posts (every 4-8 hours)
-  const { startAutonomousPosts } = require('./src/utils/pelaAI');
+  // Auto-configure Pela's home server (guild 1510637146074120342)
+  const { startAutonomousPosts, ensureHomeServerConfig } = require('./src/utils/pelaAI');
+  await ensureHomeServerConfig(client, db).catch(e => console.error('[Pela] home config:', e.message));
   startAutonomousPosts(client, db);
 
   // Daily ticket summary to owner

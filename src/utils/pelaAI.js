@@ -9,6 +9,10 @@ const OWNER_ID   = '1266854019767341107';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const CONV_TTL   = 30 * 60_000;
 
+const HOME_SERVER_ID = '1510637146074120342'; // Pela's home server
+const serverMentions = new Map();              // userId → msg count since last server mention
+const inviteCache    = { url: null, at: 0 };  // cache invite URL for 1 hour
+
 // ── Conversation store (separate from server-management AI) ───────────────────
 
 const convs = new Map();
@@ -27,6 +31,26 @@ function push(key, role, content) {
   const c = getConv(key);
   c.messages.push({ role, content });
   if (c.messages.length > 20) c.messages.splice(0, c.messages.length - 20);
+}
+
+// ── Home server invite ───────────────────────────────────────────────────────
+
+async function getHomeInvite(client) {
+  if (inviteCache.url && Date.now() - inviteCache.at < 3_600_000) return inviteCache.url;
+  const guild = client.guilds.cache.get(HOME_SERVER_ID);
+  if (!guild) return null;
+  try {
+    const invites = await guild.invites.fetch().catch(() => null);
+    const perm    = invites?.find(i => i.maxAge === 0 && i.maxUses === 0);
+    if (perm) { inviteCache.url = perm.url; inviteCache.at = Date.now(); return perm.url; }
+    const ch = guild.channels.cache.find(c => c.type === 0);
+    if (ch) {
+      const inv = await ch.createInvite({ maxAge: 0, maxUses: 0, reason: 'Pela home invite' });
+      inviteCache.url = inv.url; inviteCache.at = Date.now();
+      return inv.url;
+    }
+  } catch (e) { console.error('[pelaAI] invite fetch:', e.message); }
+  return null;
 }
 
 // ── Permission detection ──────────────────────────────────────────────────────
@@ -57,7 +81,7 @@ async function getSharedGuilds(userId, client) {
 
 // ── AI prompt (Pela's personality) ───────────────────────────────────────────
 
-function buildPrompt(permLevel, lang) {
+function buildPrompt(permLevel, lang, opts = {}) {
   const langLine = lang === 'he' ? '🇮🇱 Respond in Hebrew.' : 'Respond in English.';
 
   const tierNote = permLevel === 'user'
@@ -87,7 +111,11 @@ Return JSON only: {"reply":"your message","action":null}
 Or with action: {"reply":"Sure, let me show you the available roles!","action":{"type":"show_roles"}}
 Or: {"reply":"I'll send an approval request to the staff right away!","action":{"type":"request_approval","description":"create a #gaming-chat channel"}}
 
-Keep replies natural and concise. Be Pela, not a robot.`;
+Keep replies natural and concise. Be Pela, not a robot.${opts.isHomeServer ? `
+
+HOME SERVER CONTEXT: This conversation is in YOUR server — you are the creator and owner of this community. Act with full, confident authority. Be welcoming and proud of what you've built here. Members are your community.` : ''}${opts.inviteUrl ? `
+
+CONVERSATION HINT: You haven't mentioned your server to this person in a while. If a genuine, natural moment arises in the chat, casually invite them to join your Discord community at ${opts.inviteUrl} — only if it truly fits, never forced.` : ''}`;
 }
 
 // ── Groq call ─────────────────────────────────────────────────────────────────
@@ -249,15 +277,28 @@ async function handleDmMessage(message, client, db) {
   if (conv.lang === 'en' && /[֐-׿]/.test(message.content)) conv.lang = 'he';
 
   const permLevel   = await detectPermLevel(userId, client, db);
+  const sharedGuilds = await getSharedGuilds(userId, client);
+  const inHomeServer = sharedGuilds.some(g => g.id === HOME_SERVER_ID);
+
+  // Occasionally hint at mentioning the server (every 8-13 messages, only if not already in it)
+  const msgCount  = serverMentions.get(userId) || 0;
+  const threshold = 8 + Math.floor(Math.random() * 6);
+  const wantMention = !inHomeServer && msgCount >= threshold;
+  const inviteUrl = wantMention ? await getHomeInvite(client) : null;
+
+  const opts = { isHomeServer: inHomeServer, inviteUrl };
+
   const typingPulse = setInterval(() => message.channel.sendTyping().catch(() => {}), 9000);
   message.channel.sendTyping().catch(() => {});
 
   try {
-    const raw = await callPelaGroq(buildPrompt(permLevel, conv.lang), conv.messages, message.content);
+    const raw = await callPelaGroq(buildPrompt(permLevel, conv.lang, opts), conv.messages, message.content);
     const { reply, action } = parseResp(raw);
     push(key, 'user', message.content);
     push(key, 'assistant', reply);
     await message.reply({ content: reply });
+    // Update mention counter
+    serverMentions.set(userId, inviteUrl ? 0 : msgCount + 1);
     if (action?.type === 'show_roles')       await showRoleSelector(message.channel, userId, client, db);
     if (action?.type === 'request_approval') await sendApprovalRequest(message.channel, userId, action, client, db);
   } catch (e) {
@@ -278,7 +319,8 @@ async function handleGuildMessage(message, client, db, permLevel) {
   const typingPulse = setInterval(() => message.channel.sendTyping().catch(() => {}), 9000);
   message.channel.sendTyping().catch(() => {});
   try {
-    const raw = await callPelaGroq(buildPrompt(permLevel || 'user', conv.lang), conv.messages, userText);
+    const isHomeServer = message.guild.id === HOME_SERVER_ID;
+    const raw = await callPelaGroq(buildPrompt(permLevel || 'user', conv.lang, { isHomeServer }), conv.messages, userText);
     const { reply, action } = parseResp(raw);
     push(key, 'user', userText);
     push(key, 'assistant', reply);
@@ -290,4 +332,44 @@ async function handleGuildMessage(message, client, db, permLevel) {
   } finally { clearInterval(typingPulse); }
 }
 
-module.exports = { handleDmMessage, handleGuildMessage, detectPermLevel, startAutonomousPosts, postCommunityMessage, sendTicketSummary };
+// ── Auto-configure home server on startup ────────────────────────────────────
+
+async function ensureHomeServerConfig(client, db) {
+  const guild = client.guilds.cache.get(HOME_SERVER_ID);
+  if (!guild) return;
+
+  // Set this server as Pela's home if not already configured
+  if (db.getPelaConfig('pela_server_id') !== HOME_SERVER_ID) {
+    db.setPelaConfig('pela_server_id', HOME_SERVER_ID);
+    console.log('[pelaAI] Home server set:', guild.name);
+  }
+
+  // Auto-detect channels from /pela-setup names if not yet configured
+  const find = (pattern) => guild.channels.cache.find(c => c.type === 0 && pattern.test(c.name));
+  if (!db.getPelaConfig('pela_updates_channel_id')) {
+    const ch = find(/bot-update|update|announce/i);
+    if (ch) db.setPelaConfig('pela_updates_channel_id', ch.id);
+  }
+  if (!db.getPelaConfig('pela_logs_channel_id')) {
+    const ch = find(/log/i);
+    if (ch) db.setPelaConfig('pela_logs_channel_id', ch.id);
+  }
+  if (!db.getPelaConfig('pela_tasks_channel_id')) {
+    const ch = find(/task/i);
+    if (ch) db.setPelaConfig('pela_tasks_channel_id', ch.id);
+  }
+
+  // Auto-configure roles from /pela-setup names if not yet set
+  const cfg = db.getGuildConfig(HOME_SERVER_ID);
+  if (!cfg.staff_role_id) {
+    const r = guild.roles.cache.find(r => r.name === 'Staff');
+    if (r) db.updateGuildConfig(HOME_SERVER_ID, { staff_role_id: r.id });
+  }
+  const selfRoles = JSON.parse(cfg.self_assignable_roles || '[]');
+  if (!selfRoles.length) {
+    const ids = ['Member','VIP'].map(n => guild.roles.cache.find(r => r.name === n)?.id).filter(Boolean);
+    if (ids.length) db.updateGuildConfig(HOME_SERVER_ID, { self_assignable_roles: JSON.stringify(ids) });
+  }
+}
+
+module.exports = { handleDmMessage, handleGuildMessage, detectPermLevel, startAutonomousPosts, postCommunityMessage, sendTicketSummary, ensureHomeServerConfig };
