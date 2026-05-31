@@ -218,16 +218,12 @@ client.on(Events.InteractionCreate, async interaction => {
 client.on(Events.MessageCreate, async message => {
   if (message.author.bot) return;
 
-  // ── DM routing: admin/owner → server mgmt AI; everyone else → Pela personality
+  // ── DMs: always use Pela personality (admins still get full capability) ──────
+  // Server management is done via @mention or AI-chat channel inside a server.
+  // Routing admins to aiChat caused the 'pick a server' prompt for casual chat.
   if (!message.guild) {
-    const { detectPermLevel, handleDmMessage: pelaDm } = require('./src/utils/pelaAI');
-    const perm = await detectPermLevel(message.author.id, client, db).catch(() => 'user');
-    if (perm === 'owner' || perm === 'admin') {
-      const { handleDmMessage: aiDm } = require('./src/utils/aiChat');
-      await aiDm(message, client, db).catch(console.error);
-    } else {
-      await pelaDm(message, client, db).catch(console.error);
-    }
+    const { handleDmMessage: pelaDm } = require('./src/utils/pelaAI');
+    await pelaDm(message, client, db).catch(console.error);
     return;
   }
 
