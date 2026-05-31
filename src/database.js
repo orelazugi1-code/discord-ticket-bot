@@ -250,6 +250,7 @@ db.exec(`
   `ALTER TABLE guild_config ADD COLUMN staff_role_id TEXT`,
   `ALTER TABLE guild_config ADD COLUMN staff_channel_id TEXT`,
   `ALTER TABLE guild_config ADD COLUMN self_assignable_roles TEXT DEFAULT '[]'`,
+  `ALTER TABLE guild_config ADD COLUMN last_deploy_hash TEXT`,
 ].forEach(sql => { try { db.exec(sql); } catch {} });
 
 // ── Prepared statements ───────────────────────────────────────────────────────

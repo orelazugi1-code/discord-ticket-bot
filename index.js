@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection, Events, REST, Routes, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, Collection, Events, REST, Routes, PermissionFlagsBits } = require('discord.js');
 const fs   = require('fs');
 const path = require('path');
 const db   = require('./src/database');
@@ -12,8 +12,12 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.DirectMessages,         // required to receive DM events
+    GatewayIntentBits.DirectMessages,
     GatewayIntentBits.DirectMessageReactions,
+  ],
+  partials: [
+    Partials.Channel, // required for DM channel objects to hydrate
+    Partials.Message,
   ],
 });
 
