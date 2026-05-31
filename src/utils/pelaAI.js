@@ -113,11 +113,12 @@ WHAT YOU CAN DO:
 - Send the server invite link → action {"type":"show_invite"}
 - Submit a staff approval request → action {"type":"request_approval","description":"..."}
 
-ROLE REQUESTS:
-- Self-assignable roles (Member, VIP, etc.) → give immediately with give_role
-- Staff / Moderator / Admin / privileged roles → do NOT give directly. Instead:
-  Ask first: "Why do you think you'd be a good fit?" Wait for their answer.
-  If compelling → use request_approval. If weak/entitled → politely decline.
+ROLE TIERS — handle each differently:
+- FREE (assign immediately with give_role): Member, and any basic community role
+- VIP / SPECIAL (requires justification): Ask "Why do you think you deserve VIP?" first.
+  If they give a real reason (active member, contributions, loyalty) → give_role.
+  If they just say "I want it" / "because I want to" → politely decline and explain it's earned.
+- STAFF / MOD / ADMIN (requires full quiz): Run the 3-question quiz first, decide after.
 
 STAFF APPLICATION QUIZ (run over multiple messages):
 If they want to apply for staff/mod: ask these one at a time, remember their answers:
@@ -469,32 +470,43 @@ async function handleTicketMessage(message, ticket, db) {
   message.channel.sendTyping().catch(() => {});
   try {
     const { callAiWithFallback } = require('./aiChat');
-    // Pela acts as the server owner — confident, helpful, authoritative
-    const ticketPrompt = `You are Pela, the owner and creator of this Discord server. You are personally handling this support ticket.
+    const ticketPrompt = `You are Pela, the owner and creator of this Discord server, personally handling this support ticket.
 Ticket subject: "${ticket.subject}"
-Your role:
-- You ARE the owner — speak with confidence and authority, not as a bot or helpdesk agent
-- Actually solve the problem — never say "the support team will contact you" or "someone will assist you"
-- If they want to join staff: run the 3-question quiz yourself (motivation → availability → conflict handling) and decide
-- If there's a technical issue: guide them step by step yourself
-- Be warm, direct, and decisive — like a server owner would be
-- Keep each reply to 2-3 sentences max
-Reply as PLAIN TEXT only — no JSON, no code blocks.`;
+
+RULES:
+- You ARE the owner — confident, authoritative, warm. Never defer to "someone else will help".
+- Solve problems directly. Guide step by step if needed.
+- Staff quiz (run over multiple messages): 1) motivation 2) availability 3) conflict handling — then decide.
+- After quiz: if accepting → return action give_role with the staff role name. If rejecting → decline kindly.
+- Keep each reply to 2-3 sentences max.
+
+Return ONLY valid JSON:
+{"reply":"your response text","action":null}
+OR when assigning a role after quiz acceptance:
+{"reply":"Welcome to the team! 🎉 You're now Staff!","action":{"type":"give_role","role_name":"Staff"}}`;
+
     const rawText = await callAiWithFallback(ticketPrompt, conv.messages.slice(-6), message.content);
-    // callAiWithFallback uses json_object mode for some providers — extract the text robustly
-    const text = (() => {
-      try {
-        const parsed = JSON.parse(rawText);
-        // Try every common field name the model might use
-        return parsed.reply || parsed.message || parsed.content || parsed.text ||
-               parsed.response || parsed.answer ||
-               Object.values(parsed).find(v => typeof v === 'string' && v.length > 1) ||
-               rawText;
-      } catch { return rawText; }
-    })().trim().replace(/^["'`]|["'`]$/g, '');
+    // Parse reply text AND any action from the JSON response
+    let text = rawText, ticketAction = null;
+    try {
+      const parsed = JSON.parse(rawText);
+      text = parsed.reply || parsed.message || parsed.content || parsed.text ||
+             parsed.response || parsed.answer ||
+             Object.values(parsed).find(v => typeof v === 'string' && v.length > 1) ||
+             rawText;
+      ticketAction = parsed.action || null;
+    } catch { /* rawText is plain text, use as-is */ }
+    text = text.trim().replace(/^["'`]|["'`]$/g, '');
     push(key, 'user',      message.content);
     push(key, 'assistant', text);
     await message.channel.send({ content: text });
+    // Execute any action Pela decided on (e.g., give_role after quiz acceptance)
+    if (ticketAction?.type === 'give_role') {
+      await assignRoleDirectly(message.channel, message.author.id, ticketAction, message.client, db);
+    }
+    if (ticketAction?.type === 'request_approval') {
+      await sendApprovalRequest(message.channel, message.author.id, ticketAction, message.client, db);
+    }
   } catch (e) { console.error('[pelaAI] ticket reply error:', e.message); }
 }
 
