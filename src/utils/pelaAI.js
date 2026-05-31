@@ -515,22 +515,39 @@ async function assignPrivilegedRole(channel, guild, userId, roleName) {
 // ── Staff role: find or create, then assign directly ────────────────────────
 
 async function assignStaffRole(guild, userId) {
-  if (guild.roles.cache.size < 2) await guild.roles.fetch().catch(() => {});
+  console.log('[assignStaffRole] guild:', guild.name, '| userId:', userId);
+  // Always fetch — cache may be stale; size<2 check was skipped when guild has roles
+  await guild.roles.fetch().catch(e => console.error('[assignStaffRole] roles.fetch error:', e.message));
   const NAMES = ['staff', 'support', 'team', 'צוות'];
-  let role = guild.roles.cache.find(r => NAMES.includes(r.name.toLowerCase()));
+  console.log('[assignStaffRole] roles in cache:', [...guild.roles.cache.values()].map(r => r.name).join(', '));
+  // Flexible match: exact OR starts-with (handles 'Staff Team', '🎭 Staff', etc.)
+  let role = guild.roles.cache.find(r =>
+    NAMES.some(n => r.name.toLowerCase() === n || r.name.toLowerCase().startsWith(n + ' ') || r.name.toLowerCase().endsWith(' ' + n))
+  );
+  console.log('[assignStaffRole] existing role found:', role ? role.name + '(' + role.id + ')' : 'none');
   if (!role) {
+    console.log('[assignStaffRole] creating new Staff role...');
     role = await guild.roles.create({
       name:        'Staff',
-      color:       0x3498DB, // blue
+      color:       0x3498DB,
       hoist:       true,
       mentionable: true,
       permissions: [PermissionFlagsBits.ManageMessages, PermissionFlagsBits.KickMembers],
       reason:      'Pela: staff role created after quiz acceptance',
-    });
+    }).catch(e => { console.error('[assignStaffRole] roles.create error:', e.message); return null; });
+    if (!role) return null;
+    console.log('[assignStaffRole] created role:', role.name);
   }
-  const member = await guild.members.fetch(userId).catch(() => null);
-  if (!member) return null;
-  await member.roles.add(role, 'Pela: assigned after quiz acceptance');
+  console.log('[assignStaffRole] fetching member:', userId);
+  const member = await guild.members.fetch(userId).catch(e => {
+    console.error('[assignStaffRole] members.fetch error:', e.message);
+    return null;
+  });
+  if (!member) { console.log('[assignStaffRole] member not found'); return null; }
+  console.log('[assignStaffRole] calling member.roles.add for', member.user.tag);
+  await member.roles.add(role, 'Pela: assigned after quiz acceptance')
+    .catch(e => { throw new Error('roles.add failed: ' + e.message); });
+  console.log('[assignStaffRole] SUCCESS — role', role.name, 'assigned to', member.user.tag);
   return role;
 }
 
@@ -583,14 +600,26 @@ Return ONLY valid JSON: {"reply":"your response","action":null}`;
              Object.values(parsed).find(v => typeof v === 'string' && v.length > 1) ||
              rawText;
       ticketAction = parsed.action || null;
-    } catch { /* rawText is plain text, use as-is */ }
+    } catch {
+      // JSON parse failed (Mistral/non-jsonMode providers may return plain text or near-JSON)
+      // Try regex extraction of the reply field before falling back to raw text
+      const m = rawText.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      if (m) text = m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+      else text = rawText; // genuinely plain text — use as-is
+    }
     text = text.trim().replace(/^["'`]|["'`]$/g, '');
     push(key, 'user',      message.content);
     push(key, 'assistant', text);
     await message.channel.send({ content: text });
 
-    // Track quiz question count — increment when Pela asked a question this turn
-    if (/\?/.test(text)) conv.quizQ = (conv.quizQ || 0) + 1;
+    // Track quiz question count — only increment for the 3 actual quiz questions
+    // (not every ? in text, which caused early acceptance on greeting messages)
+    const QUIZ_Q = [
+      /why do you want.*(join|team)|why.*apply|what.*motivat/i,
+      /timezone|how.*often.*active|how active|how.*availabl/i,
+      /conflict|dispute|two members|argument.*between/i,
+    ];
+    if (QUIZ_Q.some(q => q.test(text))) conv.quizQ = (conv.quizQ || 0) + 1;
 
     // Code-driven acceptance: detect via keywords, require >= 3 questions first
     const ACCEPT = /welcome to the team|you'?re? (now )?(in|accepted|staff|on the team)|you'?ve? been accepted|congratulations.*team|you'?re? approved/i;
