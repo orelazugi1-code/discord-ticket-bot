@@ -96,6 +96,10 @@ client.once(Events.ClientReady, async c => {
   // Auto-configure Pela's home server (guild 1510637146074120342)
   const { startAutonomousPosts, ensureHomeServerConfig } = require('./src/utils/pelaAI');
   await ensureHomeServerConfig(client, db).catch(e => console.error('[Pela] home config:', e.message));
+
+  // Autonomous server scan: AI checks for missing structure, runs on startup then every 6h
+  const { startServerScan } = require('./src/utils/pelaAI');
+  startServerScan(client, db);
   startAutonomousPosts(client, db);
 
   // Daily ticket summary to owner
@@ -156,6 +160,20 @@ client.on(Events.GuildMemberRemove, async member => {
       .replace('{username}', member.user.username)
       .replace('{server}',   member.guild.name);
     await ch.send(msg).catch(console.error);
+  }
+});
+
+// ── New server join: DM the owner ───────────────────────────────────────────
+
+client.on(Events.GuildCreate, async guild => {
+  try {
+    const owner = await guild.fetchOwner();
+    await owner.user.send({
+      content: `Hi! 👋 I'm Pela — an AI community manager. Thanks for adding me to **${guild.name}**!\n\nI can help with tickets, roles, custom forms, and more. Run \`/pela-setup\` to set up the server structure automatically, or just chat with me here anytime!\n\nLooking forward to working with you! 🚀`,
+    });
+    console.log(`[Pela] Welcome DM sent to owner of ${guild.name}`);
+  } catch (e) {
+    console.error('[Pela] Could not DM guild owner:', e.message);
   }
 });
 

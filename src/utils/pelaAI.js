@@ -13,6 +13,7 @@ const HOME_SERVER_ID = '1510637146074120342'; // Pela's home server
 const serverMentions = new Map();              // userId → msg count since last server mention
 const permCache      = new Map();              // userId → { perm, guilds, at } (5-min TTL)
 const ticketReplied  = new Map();              // ticketId → timestamp (rate-limit ticket replies)
+const firstInviteSent = new Set();             // userIds who received the first explicit invite
 const inviteCache    = { url: null, at: 0 };  // cache invite URL for 1 hour
 
 // ── Conversation store (separate from server-management AI) ───────────────────
@@ -107,10 +108,23 @@ function buildPrompt(permLevel, lang, opts = {}) {
     ? `This is a regular community member.${nameNote}
 
 WHAT YOU CAN DO:
-- Assign a specific role by name → action {"type":"give_role","role_name":"Member"}
+- Assign a self-assignable role by name → action {"type":"give_role","role_name":"Member"}
 - Show all available roles → action {"type":"show_roles"}
 - Send the server invite link → action {"type":"show_invite"}
 - Submit a staff approval request → action {"type":"request_approval","description":"..."}
+
+ROLE REQUESTS:
+- Self-assignable roles (Member, VIP, etc.) → give immediately with give_role
+- Staff / Moderator / Admin / privileged roles → do NOT give directly. Instead:
+  Ask first: "Why do you think you'd be a good fit?" Wait for their answer.
+  If compelling → use request_approval. If weak/entitled → politely decline.
+
+STAFF APPLICATION QUIZ (run over multiple messages):
+If they want to apply for staff/mod: ask these one at a time, remember their answers:
+  1. "Why do you want to join the team?"
+  2. "What timezone are you in and how often can you be active?"
+  3. "How would you handle a conflict between two members?"
+After all three answers: impressive → request_approval, weak/entitled → politely decline.
 
 WHAT YOU CANNOT DO — be honest, don't pretend:
 • Cannot delete or edit messages
@@ -301,9 +315,14 @@ async function postCommunityMessage(client, db) {
   if (!ch) { console.log('[pelaAI] Updates channel not found:', channelId); return; }
   const text = await generateCommunityPost();
   if (text) {
-    await ch.send({ content: text }).catch(e => console.error('[pelaAI] post failed:', e.message));
-    db.setPelaConfig('last_autonomous_post', Date.now().toString());
-    console.log('[pelaAI] Autonomous post sent to', guild.name);
+    const msg = await ch.send({ content: text }).catch(e => { console.error('[pelaAI] post failed:', e.message); return null; });
+    if (msg) {
+      db.setPelaConfig('last_autonomous_post', Date.now().toString());
+      console.log('[pelaAI] Autonomous post sent to', guild.name);
+      // Ephemeral — delete after 1-4 hours to feel more human and spontaneous
+      const deleteIn = (1 + Math.random() * 3) * 3_600_000;
+      setTimeout(() => msg.delete().catch(() => {}), deleteIn);
+    }
   }
 }
 
@@ -365,6 +384,14 @@ async function handleDmMessage(message, client, db) {
     push(key, 'user', message.content);
     push(key, 'assistant', reply);
     await message.channel.send({ content: reply }); // send() more reliable than reply() in DMs
+    // After 3rd message: send explicit first invite (once per user, if not in home server)
+    if (!inHomeServer && msgCount === 2 && !firstInviteSent.has(userId)) {
+      const invUrl = await getHomeInvite(client, db);
+      if (invUrl) {
+        firstInviteSent.add(userId);
+        await message.channel.send({ content: `By the way — you should join my Discord server, it's where I live! 😄 ${invUrl}` });
+      }
+    }
     // Update mention counter
     serverMentions.set(userId, inviteUrl ? 0 : msgCount + 1);
     if (action?.type === 'show_roles')       await showRoleSelector(message.channel, userId, client, db);
@@ -433,7 +460,7 @@ async function generateTicketGreeting(username, subject) {
 async function handleTicketMessage(message, ticket, db) {
   if (message.author.id !== ticket.user_id) return; // only respond to ticket opener
   const last = ticketReplied.get(ticket.id) || 0;
-  if (Date.now() - last < 90_000) return; // max 1 reply per 90 seconds per ticket
+  if (Date.now() - last < 8_000) return;  // 8s burst-protection so split messages get one reply
   if (!process.env.GROQ_API_KEY) return;
 
   ticketReplied.set(ticket.id, Date.now());
@@ -450,6 +477,70 @@ async function handleTicketMessage(message, ticket, db) {
     push(key, 'assistant', text);
     await message.channel.send({ content: text });
   } catch (e) { console.error('[pelaAI] ticket reply error:', e.message); }
+}
+
+// ── Autonomous server scan ───────────────────────────────────────────────────
+
+async function runHomeServerScan(client, db) {
+  const guild = client.guilds.cache.get(HOME_SERVER_ID);
+  if (!guild) return;
+  if (db.getPelaConfig('server_scan_complete') === 'true') return;
+
+  await guild.channels.fetch().catch(() => {});
+  await guild.roles.fetch().catch(() => {});
+
+  const cats  = [...guild.channels.cache.values()].filter(c => c.type === 4).map(c => c.name).join(', ') || 'none';
+  const chs   = [...guild.channels.cache.values()].filter(c => c.type === 0).slice(0, 20).map(c => c.name).join(', ') || 'none';
+  const roles = [...guild.roles.cache.values()].filter(r => !r.managed && r.name !== '@everyone').map(r => r.name).join(', ') || 'none';
+
+  try {
+    const { callAiWithFallback } = require('./aiChat');
+    const scanPrompt = `You are Pela, owner of Discord server "${guild.name}".
+Categories: ${cats}
+Channels: ${chs}
+Roles: ${roles}
+
+As owner, identify 1-3 ESSENTIAL structural additions only. No duplicates, no decoration.
+Return raw JSON only:
+{"additions":[{"type":"category|channel|role","name":"emoji + name","reason":"brief reason"}],"complete":false}
+If the server already looks well-structured: {"additions":[],"complete":true}`;
+
+    const raw  = await callAiWithFallback(scanPrompt, [], 'Analyze server completeness');
+    const resp = JSON.parse(raw);
+
+    if (resp.complete) {
+      db.setPelaConfig('server_scan_complete', 'true');
+      console.log('[pelaAI] Server scan: complete, no more additions needed');
+      return;
+    }
+
+    const additions = (resp.additions || []).slice(0, 3);
+    const done = [];
+    for (const item of additions) {
+      try {
+        if (item.type === 'category') await guild.channels.create({ name: item.name, type: 4, reason: 'Pela scan' });
+        else if (item.type === 'channel') await guild.channels.create({ name: item.name, type: 0, reason: 'Pela scan' });
+        else if (item.type === 'role')    await guild.roles.create({ name: item.name, reason: 'Pela scan' });
+        done.push(item);
+        await new Promise(r => setTimeout(r, 800));
+      } catch (e) { console.error('[pelaAI] scan add error:', e.message); }
+    }
+
+    if (done.length) {
+      const logChId = db.getPelaConfig('pela_logs_channel_id');
+      if (logChId) {
+        const logCh = guild.channels.cache.get(logChId) || await guild.channels.fetch(logChId).catch(() => null);
+        if (logCh) await logCh.send({ content: `🔧 **Auto-scan** added ${done.length} item(s):\n${done.map(d => `• **${d.type}**: ${d.name} — ${d.reason}`).join('\n')}` }).catch(() => {});
+      }
+      console.log(`[pelaAI] Server scan: added ${done.length} items`);
+    }
+  } catch (e) { console.error('[pelaAI] server scan error:', e.message); }
+}
+
+function startServerScan(client, db) {
+  const scan = () => runHomeServerScan(client, db).catch(() => {});
+  setTimeout(scan, 10 * 60_000);         // first scan 10 minutes after startup
+  setInterval(scan, 6 * 3_600_000);      // then every 6 hours
 }
 
 // ── Auto-configure home server on startup ────────────────────────────────────
@@ -492,4 +583,4 @@ async function ensureHomeServerConfig(client, db) {
   }
 }
 
-module.exports = { handleDmMessage, handleGuildMessage, detectPermLevel, startAutonomousPosts, postCommunityMessage, sendTicketSummary, ensureHomeServerConfig, generateTicketGreeting, handleTicketMessage };
+module.exports = { handleDmMessage, handleGuildMessage, detectPermLevel, startAutonomousPosts, postCommunityMessage, sendTicketSummary, ensureHomeServerConfig, generateTicketGreeting, handleTicketMessage, startServerScan };
