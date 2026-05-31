@@ -9,7 +9,8 @@ const OWNER_ID   = '1266854019767341107';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const CONV_TTL   = 30 * 60_000;
 
-const HOME_SERVER_ID = '1510637146074120342'; // Pela's home server
+const HOME_SERVER_ID    = '1510637146074120342'; // Pela's home server
+const STAFF_ROLE_NAMES  = ['staff', 'support', 'moderator', 'mod', 'team', 'helper', 'admin'];
 const serverMentions = new Map();              // userId → msg count since last server mention
 const permCache      = new Map();              // userId → { perm, guilds, at } (5-min TTL)
 const ticketReplied  = new Map();              // ticketId → timestamp (rate-limit ticket replies)
@@ -456,6 +457,52 @@ async function generateTicketGreeting(username, subject) {
   } catch { return fallback; }
 }
 
+// ── Privileged role assignment (staff roles: find/create with permissions) ────
+
+async function assignPrivilegedRole(channel, guild, userId, roleName) {
+  const nameLower = roleName.toLowerCase();
+  // 1. Find existing role — exact name first, then by staff-pattern
+  let role = guild.roles.cache.find(r => r.name.toLowerCase() === nameLower)
+          || guild.roles.cache.find(r => STAFF_ROLE_NAMES.some(s => r.name.toLowerCase().includes(s)));
+
+  const staffPerms = [PermissionFlagsBits.ManageMessages, PermissionFlagsBits.KickMembers];
+  const fullPerms  = [...staffPerms, PermissionFlagsBits.ManageChannels];
+
+  try {
+    if (role) {
+      // Role exists — ensure it has the minimum staff permissions
+      const missing = staffPerms.filter(p => !role.permissions.has(p));
+      if (missing.length) {
+        role = await role.setPermissions(role.permissions.add(missing), 'Pela: upgrading to staff role');
+        await channel.send({ content: `🔧 Updated **${role.name}** with staff permissions.` });
+      }
+    } else {
+      // Role doesn't exist — create it
+      role = await guild.roles.create({
+        name:        roleName,
+        permissions: fullPerms,
+        hoist:       true,
+        mentionable: true,
+        color:       0xE67E22,
+        reason:      'Pela: created for staff assignment',
+      });
+      await channel.send({ content: `🆕 Created the **${role.name}** role with staff permissions.` });
+    }
+
+    // 2. Assign to the member
+    const member = await guild.members.fetch(userId).catch(() => null);
+    if (!member) {
+      await channel.send({ content: `✅ **${role.name}** role is ready! I couldn't find you in the server right now — try rejoining and the role should appear.` });
+      return;
+    }
+    await member.roles.add(role, 'Pela: staff assignment after quiz');
+    await channel.send({ content: `✅ <@${userId}> you are now **${role.name}**! Welcome to the team.` });
+  } catch (e) {
+    console.error('[pelaAI] assignPrivilegedRole error:', e.message);
+    await channel.send({ content: `⚠️ Couldn't complete the role assignment: ${e.message}` });
+  }
+}
+
 // ── Ticket channel participation ─────────────────────────────────────────────
 
 async function handleTicketMessage(message, ticket, db) {
@@ -502,7 +549,14 @@ OR when assigning a role after quiz acceptance:
     await message.channel.send({ content: text });
     // Execute any action Pela decided on (e.g., give_role after quiz acceptance)
     if (ticketAction?.type === 'give_role') {
-      await assignRoleDirectly(message.channel, message.author.id, ticketAction, message.client, db);
+      const rName = ticketAction.role_name || ticketAction.role || 'Staff';
+      const isPriv = STAFF_ROLE_NAMES.some(s => rName.toLowerCase().includes(s));
+      if (isPriv && message.guild) {
+        // Staff/privileged role: find/create with permissions, bypass self-assignable list
+        await assignPrivilegedRole(message.channel, message.guild, message.author.id, rName);
+      } else {
+        await assignRoleDirectly(message.channel, message.author.id, ticketAction, message.client, db);
+      }
     }
     if (ticketAction?.type === 'request_approval') {
       await sendApprovalRequest(message.channel, message.author.id, ticketAction, message.client, db);
