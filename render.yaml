@@ -8,10 +8,14 @@ services:
     startCommand: node start.js
     healthCheckPath: /
     envVars:
+      - key: NODE_OPTIONS
+        value: --experimental-sqlite
       - key: NODE_ENV
         value: production
       - key: DATA_DIR
         value: /opt/render/project/src/data
+      - key: REDIRECT_URI
+        value: https://discord-bot-4e9w.onrender.com/auth/callback
       - key: BOT_TOKEN
         sync: false
       - key: CLIENT_ID
@@ -21,6 +25,4 @@ services:
       - key: GUILD_ID
         sync: false
       - key: SESSION_SECRET
-        sync: false
-      - key: REDIRECT_URI
         sync: false
