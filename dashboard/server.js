@@ -1,4 +1,4 @@
-﻿require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const express = require('express');
 const session = require('express-session');
 const axios   = require('axios');
@@ -361,6 +361,105 @@ app.get('/api/guild/:guildId/roles', requireAuth, requireGuildAccess, async (req
   }
 });
 
+
+// ── Clone (called by VOID client mod) ────────────────────────────────────────
+
+const _sleep = ms => new Promise(r => setTimeout(r, ms));
+
+app.options('/api/clone', (req, res) => {
+  res.set({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type' });
+  res.sendStatus(200);
+});
+
+app.post('/api/clone', express.json(), async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  const { guild: guildData, userId } = req.body ?? {};
+  if (!guildData?.name || !userId) return res.status(400).json({ error: 'missing guild or userId' });
+
+  const h = botHeaders();
+  try {
+    // Create new guild
+    const created = await axios.post(`${DISCORD_API}/guilds`, { name: guildData.name }, { headers: h });
+    const newId = created.data.id;
+    await _sleep(800);
+
+    // Delete default channels
+    const defRes = await axios.get(`${DISCORD_API}/guilds/${newId}/channels`, { headers: h });
+    for (const ch of defRes.data) {
+      await axios.delete(`${DISCORD_API}/channels/${ch.id}`, { headers: h }).catch(() => {});
+      await _sleep(150);
+    }
+
+    // Clone roles
+    const roleMap = {};
+    for (const r of (guildData.roles ?? []).sort((a, b) => a.position - b.position)) {
+      try {
+        const nr = await axios.post(`${DISCORD_API}/guilds/${newId}/roles`, {
+          name: r.name, color: r.color, hoist: r.hoist,
+          mentionable: r.mentionable, permissions: r.permissions,
+        }, { headers: h });
+        roleMap[r.id] = nr.data.id;
+        await _sleep(150);
+      } catch {}
+    }
+
+    // Clone categories first
+    const catMap = {};
+    for (const c of (guildData.channels ?? []).filter(c => c.type === 4).sort((a, b) => a.position - b.position)) {
+      try {
+        const nc = await axios.post(`${DISCORD_API}/guilds/${newId}/channels`,
+          { name: c.name, type: 4, position: c.position }, { headers: h });
+        catMap[c.id] = nc.data.id;
+        await _sleep(150);
+      } catch {}
+    }
+
+    // Clone other channels
+    for (const c of (guildData.channels ?? []).filter(c => c.type !== 4).sort((a, b) => a.position - b.position)) {
+      try {
+        const body = { name: c.name, type: c.type, position: c.position };
+        if (c.parentId && catMap[c.parentId]) body.parent_id = catMap[c.parentId];
+        if (c.topic)            body.topic             = c.topic;
+        if (c.nsfw)             body.nsfw              = true;
+        if (c.bitrate)          body.bitrate           = c.bitrate;
+        if (c.userLimit)        body.user_limit        = c.userLimit;
+        if (c.rateLimitPerUser) body.rate_limit_per_user = c.rateLimitPerUser;
+        await axios.post(`${DISCORD_API}/guilds/${newId}/channels`, body, { headers: h });
+        await _sleep(150);
+      } catch {}
+    }
+
+    // Create invite from first text channel
+    let inviteCode = null;
+    try {
+      const chRes = await axios.get(`${DISCORD_API}/guilds/${newId}/channels`, { headers: h });
+      const textCh = chRes.data.find(c => c.type === 0);
+      if (textCh) {
+        const inv = await axios.post(`${DISCORD_API}/channels/${textCh.id}/invites`,
+          { max_age: 0, max_uses: 0 }, { headers: h });
+        inviteCode = inv.data.code;
+      }
+    } catch {}
+
+    // DM the user
+    const dmRes = await axios.post(`${DISCORD_API}/users/@me/channels`, { recipient_id: userId }, { headers: h });
+    const dmId  = dmRes.data.id;
+    await axios.post(`${DISCORD_API}/channels/${dmId}/messages`, { embeds: [{
+      title: `✅ "${guildData.name}" cloned!`,
+      description:
+        (inviteCode ? `🔗 **Join your new server:**\ndiscord.gg/${inviteCode}\n\n` : '') +
+        `All channels, categories and roles have been copied.\n*(Pela is the owner — transfer ownership inside the server settings)*`,
+      color: 0x7c5af7,
+      footer: { text: 'Cloned by VOID × Pela' },
+      timestamp: new Date().toISOString(),
+    }]}, { headers: h });
+
+    res.json({ success: true, inviteCode });
+  } catch (err) {
+    console.error('[/api/clone]', err.response?.data ?? err.message);
+    res.status(500).json({ error: err.response?.data?.message ?? err.message });
+  }
+});
 // ── Invite ────────────────────────────────────────────────────────────────────
 
 app.get('/api/invite', (req, res) => {
