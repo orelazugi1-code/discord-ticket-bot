@@ -1,43 +1,4 @@
-require('doten
-
-  // ── Glow mode: resend as styled webhook ──────────────────────────────────────
-  const glowData = db.getGlow?.(message.author.id, message.guild.id);
-  if (glowData && message.content && !message.content.startsWith('/')) {
-    const GLOW_COLORS = {
-      purple:{hex:0x7c5af7,emoji:'💜'},blue:{hex:0x38bdf8,emoji:'💙'},
-      green:{hex:0x22c55e,emoji:'💚'},red:{hex:0xef4444,emoji:'❤️'},
-      gold:{hex:0xf59e0b,emoji:'💛'},pink:{hex:0xec4899,emoji:'🩷'},
-      cyan:{hex:0x06b6d4,emoji:'🩵'},rainbow:{hex:0x7c5af7,emoji:'🌈'},
-    };
-    const c = GLOW_COLORS[glowData.color] ?? GLOW_COLORS.purple;
-
-    // Style the name
-    const styleMap = {
-      bold:   n => n.split('').map(ch=>'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.includes(ch)?String.fromCodePoint(ch.charCodeAt(0)+(ch>='a'?0x1d41a-97:0x1d400-65)):ch).join(''),
-      italic: n => n.split('').map(ch=>'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.includes(ch)?String.fromCodePoint(ch.charCodeAt(0)+(ch>='a'?0x1d622-97:0x1d608-65)):ch).join(''),
-      normal: n => n,
-    };
-    const styleFn = styleMap[glowData.style] ?? styleMap.normal;
-    const displayName = message.member?.displayName ?? message.author.username;
-    const styledName = `${c.emoji} ${styleFn(displayName)}`;
-
-    try {
-      let webhook = (await message.channel.fetchWebhooks()).find(w => w.name === 'VOID Glow');
-      if (!webhook) webhook = await message.channel.createWebhook({ name: 'VOID Glow', avatar: message.author.displayAvatarURL() }).catch(() => null);
-      if (!webhook) return;
-
-      await message.delete().catch(() => {});
-      await webhook.send({
-        content: message.content,
-        username: styledName,
-        avatarURL: message.author.displayAvatarURL(),
-        embeds: message.embeds.length ? message.embeds : [],
-        allowedMentions: { parse: ['users','roles'] },
-      });
-    } catch { /* permission error — skip silently */ }
-    return;
-  }
-v').config();
+require('dotenv').config();
 const { Client, GatewayIntentBits, Partials, Collection, Events, REST, Routes, PermissionFlagsBits } = require('discord.js');
 const fs   = require('fs');
 const path = require('path');
@@ -274,19 +235,24 @@ client.on(Events.InteractionCreate, async interaction => {
 
 client.on(Events.MessageCreate, async message => {
   if (message.author.bot) return;
-  // ── Glow webhook ──────────────────────────────────────────────────────────────
-  if (message.guild && !message.author.bot && message.content && !message.content.startsWith('/')) {
-    const gd = db.getGlow?.(message.author.id, message.guild.id);
+
+  // Glow webhook — resend message as styled webhook
+  if (message.guild && message.content && !message.content.startsWith('/')) {
+    const gd = db.getGlow && db.getGlow(message.author.id, message.guild.id);
     if (gd) {
-      const emo={purple:'💜',blue:'💙',green:'💚',red:'❤️',gold:'💛',pink:'🩷',cyan:'🩵',rainbow:'🌈'};
-      const bold=n=>[...n].map(c=>c>='a'&&c<='z'?String.fromCodePoint(c.charCodeAt(0)+0x1d41a-97):c>='A'&&c<='Z'?String.fromCodePoint(c.charCodeAt(0)+0x1d400-65):c).join('');
-      const name=`${emo[gd.color]||'✨'} ${gd.style==='bold'?bold(message.member?.displayName||message.author.username):(message.member?.displayName||message.author.username)}`;
+      const emo = { purple: '💜', blue: '💙', green: '💚', red: '❤️', gold: '💛', pink: '🩷', cyan: '🩵', rainbow: '🌈' };
+      const dn = (message.member && message.member.displayName) || message.author.username;
+      const sn = (emo[gd.color] || '✨') + ' ' + dn;
       try {
-        const whs=await message.channel.fetchWebhooks().catch(()=>null);
-        let wh=whs?.find(w=>w.name==='VOID Glow');
-        if(!wh)wh=await message.channel.createWebhook({name:'VOID Glow',avatar:message.author.displayAvatarURL()}).catch(()=>null);
-        if(wh){await message.delete().catch(()=>{});await wh.send({content:message.content,username:name,avatarURL:message.author.displayAvatarURL(),allowedMentions:{parse:['users','roles']}});return;}
-      } catch {}
+        const whs = await message.channel.fetchWebhooks().catch(() => null);
+        let wh = whs && whs.find(w => w.name === 'VOID Glow');
+        if (!wh) wh = await message.channel.createWebhook({ name: 'VOID Glow', avatar: message.author.displayAvatarURL() }).catch(() => null);
+        if (wh) {
+          await message.delete().catch(() => {});
+          await wh.send({ content: message.content, username: sn, avatarURL: message.author.displayAvatarURL(), allowedMentions: { parse: ['users', 'roles'] } });
+          return;
+        }
+      } catch (e) { /* no permission */ }
     }
   }
 
