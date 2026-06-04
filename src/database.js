@@ -217,6 +217,15 @@ db.exec(`
     status      TEXT DEFAULT 'open',
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS glow_users (
+    user_id   TEXT NOT NULL,
+    guild_id  TEXT NOT NULL,
+    color     TEXT NOT NULL DEFAULT 'purple',
+    style     TEXT NOT NULL DEFAULT 'normal',
+    enabled   INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (user_id, guild_id)
+  );
 `);
 
 // ── Migrations ────────────────────────────────────────────────────────────────
@@ -572,4 +581,11 @@ module.exports = {
   getPelaTask:    id => stmts.getPelaTaskStmt.get(id),
   updatePelaTask: (id, status) => stmts.updatePelaTaskStmt.run(status, id),
   getPelaTasks:   guildId => stmts.getPelaTasksByGuildStmt.all(guildId),
+  // Glow
+  setGlow: (userId, guildId, color, style) => {
+    if (!color) { db.prepare('DELETE FROM glow_users WHERE user_id=? AND guild_id=?').run(userId, guildId); return; }
+    db.prepare('INSERT OR REPLACE INTO glow_users (user_id,guild_id,color,style,enabled) VALUES (?,?,?,?,1)').run(userId, guildId, color, style ?? 'normal');
+  },
+  getGlow:      (userId, guildId) => db.prepare('SELECT * FROM glow_users WHERE user_id=? AND guild_id=? AND enabled=1').get(userId, guildId),
+  getGlowUsers: (guildId) => db.prepare('SELECT * FROM glow_users WHERE guild_id=? AND enabled=1').all(guildId),
 };
