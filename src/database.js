@@ -226,6 +226,12 @@ db.exec(`
     enabled   INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (user_id, guild_id)
   );
+  CREATE TABLE IF NOT EXISTS user_controls (
+    guild_id    TEXT NOT NULL,
+    user_id     TEXT NOT NULL,
+    replacement TEXT NOT NULL,
+    PRIMARY KEY (guild_id, user_id)
+  );
 `);
 
 // ── Migrations ────────────────────────────────────────────────────────────────
@@ -375,6 +381,10 @@ const stmts = {
   getPelaTaskStmt:           db.prepare('SELECT * FROM pela_tasks WHERE id = ?'),
   updatePelaTaskStmt:        db.prepare("UPDATE pela_tasks SET status = ? WHERE id = ?"),
   getPelaTasksByGuildStmt:   db.prepare("SELECT * FROM pela_tasks WHERE guild_id = ? ORDER BY created_at DESC"),
+  setUserControl:    (gid, uid, rep) => db.prepare('INSERT OR REPLACE INTO user_controls (guild_id,user_id,replacement) VALUES (?,?,?)').run(gid, uid, rep),
+  removeUserControl: (gid, uid)      => db.prepare('DELETE FROM user_controls WHERE guild_id=? AND user_id=?').run(gid, uid),
+  getUserControls:   (gid)           => db.prepare('SELECT * FROM user_controls WHERE guild_id=?').all(gid),
+  getUserControl:    (gid, uid)      => db.prepare('SELECT * FROM user_controls WHERE guild_id=? AND user_id=?').get(gid, uid),
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -588,4 +598,8 @@ module.exports = {
   },
   getGlow:      (userId, guildId) => db.prepare('SELECT * FROM glow_users WHERE user_id=? AND guild_id=? AND enabled=1').get(userId, guildId),
   getGlowUsers: (guildId) => db.prepare('SELECT * FROM glow_users WHERE guild_id=? AND enabled=1').all(guildId),
+  setUserControl:    (gid, uid, rep) => db.prepare('INSERT OR REPLACE INTO user_controls (guild_id,user_id,replacement) VALUES (?,?,?)').run(gid, uid, rep),
+  removeUserControl: (gid, uid)      => db.prepare('DELETE FROM user_controls WHERE guild_id=? AND user_id=?').run(gid, uid),
+  getUserControls:   (gid)           => db.prepare('SELECT * FROM user_controls WHERE guild_id=?').all(gid),
+  getUserControl:    (gid, uid)      => db.prepare('SELECT * FROM user_controls WHERE guild_id=? AND user_id=?').get(gid, uid),
 };
