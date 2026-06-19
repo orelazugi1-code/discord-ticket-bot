@@ -59,33 +59,6 @@ client.once(Events.ClientReady, async c => {
     console.error('Failed to register slash commands:', err);
   }
 
-  // ── One-time apology message to all servers ──────────────────────────────
-  if (!process.env.APOLOGY_SENT) {
-    const { EmbedBuilder } = require('discord.js');
-    const apologyEmbed = new EmbedBuilder()
-      .setColor(0x7c5af7)
-      .setTitle('💜 פלא חזר!')
-      .setDescription(
-        '**היי לכולם!** 👋\n\n' +
-        'מתנצל על התקופה שפלא היה אופליין — הייתה בעיה בשרת שלנו, והכל תוקן עכשיו.\n\n' +
-        'פלא חזר לפעולה מלאה 24/7! 🚀\n\n' +
-        '**חדש:** יש פקודה חדשה `/report`\n' +
-        'אם יש לכם בעיה, באג, או בקשה — כתבו `/report` ואחריו טקסט, וזה ישלח ישירות ליוצר.\n' +
-        'הוא יעזור לכם בהכל! 💪'
-      )
-      .setFooter({ text: 'Pela Bot • תודה על הסבלנות ❤️' })
-      .setTimestamp();
-
-    for (const [, guild] of c.guilds.cache) {
-      try {
-        const ch = guild.systemChannel
-          || guild.channels.cache.find(c => c.isTextBased() && c.permissionsFor(guild.members.me)?.has('SendMessages'));
-        if (ch) await ch.send({ embeds: [apologyEmbed] });
-      } catch {}
-    }
-    console.log(`✅ Apology sent to ${c.guilds.cache.size} guild(s)`);
-  }
-
   // Auto-close checker — runs every hour
   setInterval(async () => {
     for (const [guildId, guild] of client.guilds.cache) {
