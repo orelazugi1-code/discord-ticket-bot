@@ -472,6 +472,20 @@ app.get('/api/invite', (req, res) => {
   res.redirect(`https://discord.com/oauth2/authorize?${params}`);
 });
 
+// ── Health check ─────────────────────────────────────────────────────────────
+
+app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-app.listen(PORT, () => console.log(`✅ Dashboard → http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`✅ Dashboard → http://localhost:${PORT}`);
+
+  // Self-ping every 5 minutes to keep Render free tier alive
+  const url = process.env.REDIRECT_URI?.replace('/auth/callback', '/health');
+  if (url) {
+    setInterval(() => {
+      fetch(url).catch(() => {});
+    }, 5 * 60 * 1000);
+  }
+});
