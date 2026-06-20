@@ -5,10 +5,10 @@ const CREATOR_ID = '1266854019767341107';
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('report')
-    .setDescription('שלח דיווח ליוצר הבוט — הוא יעזור לך בהכל')
+    .setDescription('Send a report to the bot creator')
     .addStringOption(o =>
       o.setName('text')
-        .setDescription('מה הבעיה? תאר בקצרה')
+        .setDescription('Describe the issue briefly')
         .setRequired(true),
     ),
   async execute(interaction) {
@@ -18,11 +18,11 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(0x7c5af7)
-      .setTitle('📩 דיווח חדש')
+      .setTitle('📩 New Report')
       .addFields(
-        { name: '👤 מי שלח', value: `${user.tag} (${user.id})`, inline: true },
-        { name: '🏠 שרת', value: guild ? `${guild.name} (${guild.id})` : 'DM', inline: true },
-        { name: '📝 דיווח', value: text },
+        { name: '👤 From', value: `${user.tag} (${user.id})`, inline: true },
+        { name: '🏠 Server', value: guild ? `${guild.name} (${guild.id})` : 'DM', inline: true },
+        { name: '📝 Report', value: text },
       )
       .setThumbnail(user.displayAvatarURL())
       .setTimestamp();
@@ -31,12 +31,12 @@ module.exports = {
       const creator = await interaction.client.users.fetch(CREATOR_ID);
       await creator.send({ embeds: [embed] });
       await interaction.reply({
-        content: '✅ הדיווח נשלח ליוצר! הוא יחזור אליך בהקדם.',
+        content: '✅ Report sent to the creator! They will get back to you soon.',
         ephemeral: true,
       });
     } catch {
       await interaction.reply({
-        content: '❌ לא הצלחתי לשלוח את הדיווח. נסה שוב מאוחר יותר.',
+        content: '❌ Failed to send the report. Try again later.',
         ephemeral: true,
       });
     }

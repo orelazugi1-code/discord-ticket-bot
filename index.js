@@ -38,26 +38,7 @@ for (const file of fs.readdirSync(cmdDir).filter(f => f.endsWith('.js'))) {
 // ── Ready ─────────────────────────────────────────────────────────────────────
 
 client.once(Events.ClientReady, async c => {
-  console.log(`✅ Logged in as ${c.user.tag}`);
-
-  const rest     = new REST().setToken((process.env.BOT_TOKEN || '').trim());
-  const commands = client.commands.map(cmd => cmd.data.toJSON());
-
-  try {
-    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
-    console.log(`✅ Registered ${commands.length} global slash command(s)`);
-
-    // Clear any stale guild-specific commands from the dev guild
-    if (process.env.GUILD_ID) {
-      await rest.put(
-        Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-        { body: [] },
-      ).catch(() => {});
-      console.log('✅ Cleared old guild-specific slash commands');
-    }
-  } catch (err) {
-    console.error('Failed to register slash commands:', err);
-  }
+  console.log(`✅ ${c.user.tag} online | ${client.commands.size} commands | ${c.guilds.cache.size} guilds`);
 
   // Auto-close checker — runs every hour
   setInterval(async () => {
