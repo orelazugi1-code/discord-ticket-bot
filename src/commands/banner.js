@@ -46,7 +46,10 @@ module.exports = {
   async execute(interaction) {
     const description = interaction.options.getString('description');
     const style = interaction.options.getString('style') || '';
-    const channel = interaction.options.getChannel('channel') || interaction.channel;
+    const targetChannel = interaction.options.getChannel('channel');
+    const channel = targetChannel
+      ? await interaction.guild.channels.fetch(targetChannel.id).catch(() => null) || interaction.channel
+      : interaction.channel;
 
     await interaction.reply({ content: '🎨 מייצר באנר... זה יכול לקחת כמה שניות', ephemeral: true });
 
