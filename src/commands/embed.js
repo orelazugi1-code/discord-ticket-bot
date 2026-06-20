@@ -13,8 +13,9 @@ module.exports = {
     .addStringOption(o => o.setName('title').setDescription('Embed title').setRequired(true))
     .addStringOption(o => o.setName('description').setDescription('Embed description').setRequired(true))
     .addStringOption(o => o.setName('color').setDescription('Color name or hex (#FF0000)').setRequired(false))
-    .addStringOption(o => o.setName('image').setDescription('Image URL (full size)').setRequired(false))
-    .addStringOption(o => o.setName('thumbnail').setDescription('Thumbnail URL (small, top-right)').setRequired(false))
+    .addAttachmentOption(o => o.setName('image').setDescription('Upload an image (big)').setRequired(false))
+    .addAttachmentOption(o => o.setName('thumbnail').setDescription('Upload a small image (top-right corner)').setRequired(false))
+    .addStringOption(o => o.setName('image-url').setDescription('Or paste image URL instead of uploading').setRequired(false))
     .addStringOption(o => o.setName('footer').setDescription('Footer text').setRequired(false))
     .addChannelOption(o => o.setName('channel').setDescription('Channel to send to (default: current)').setRequired(false))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
@@ -22,8 +23,9 @@ module.exports = {
     const title = interaction.options.getString('title');
     const description = interaction.options.getString('description').replace(/\\n/g, '\n');
     const colorInput = interaction.options.getString('color');
-    const image = interaction.options.getString('image');
-    const thumbnail = interaction.options.getString('thumbnail');
+    const imageAttach = interaction.options.getAttachment('image');
+    const thumbAttach = interaction.options.getAttachment('thumbnail');
+    const imageUrl = interaction.options.getString('image-url');
     const footer = interaction.options.getString('footer');
     const channel = interaction.options.getChannel('channel') || interaction.channel;
 
@@ -40,8 +42,9 @@ module.exports = {
       .setColor(color)
       .setTimestamp();
 
-    if (image) embed.setImage(image);
-    if (thumbnail) embed.setThumbnail(thumbnail);
+    const finalImage = imageAttach?.url || imageUrl;
+    if (finalImage) embed.setImage(finalImage);
+    if (thumbAttach?.url) embed.setThumbnail(thumbAttach.url);
     if (footer) embed.setFooter({ text: footer });
 
     try {
