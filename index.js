@@ -257,6 +257,10 @@ client.on(Events.InteractionCreate, async interaction => {
         const creator = await interaction.client.users.fetch('1266854019767341107');
         await creator.send(`✅ **${interaction.user.tag}** דיווח שהבעיה **נפתרה** בהצלחה!`);
       } catch {}
+      try {
+        const logCh = await interaction.client.channels.fetch('1517919493534257363').catch(() => null);
+        if (logCh) await logCh.send(`✅ **${interaction.user.tag}** — בעיה נפתרה`);
+      } catch {}
       return;
     }
     if (interaction.isButton() && interaction.customId === 'report_unsolved') {
@@ -297,6 +301,8 @@ client.on(Events.InteractionCreate, async interaction => {
           )
           .setTimestamp();
         await creator.send({ embeds: [embed] });
+        const logCh = await interaction.client.channels.fetch('1517919493534257363').catch(() => null);
+        if (logCh) await logCh.send({ embeds: [embed] });
       } catch {}
       return;
     }
@@ -307,6 +313,10 @@ client.on(Events.InteractionCreate, async interaction => {
       try {
         const creator = await interaction.client.users.fetch('1266854019767341107');
         await creator.send(`📬 מנוי חדש לעדכונים: **${interaction.user.tag}** (\`${interaction.user.id}\`)`);
+      } catch {}
+      try {
+        const logCh = await interaction.client.channels.fetch('1517919493534257363').catch(() => null);
+        if (logCh) await logCh.send(`📬 מנוי חדש: **${interaction.user.tag}** (\`${interaction.user.id}\`)`);
       } catch {}
       await interaction.reply({ content: '✅ נרשמת לעדכונים מפלא! תקבל הודעות על חידושים ועדכונים.', ephemeral: true });
       return;

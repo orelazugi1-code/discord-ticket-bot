@@ -30,6 +30,8 @@ module.exports = {
     try {
       const creator = await interaction.client.users.fetch(CREATOR_ID);
       await creator.send({ embeds: [embed] });
+      const logCh = await interaction.client.channels.fetch('1517919493534257363').catch(() => null);
+      if (logCh) await logCh.send({ embeds: [embed] });
       await interaction.reply({
         content: '✅ Report sent to the creator! They will get back to you soon.',
         ephemeral: true,
