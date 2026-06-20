@@ -74,6 +74,7 @@ const CATEGORIES = {
       { name: 'roll', desc: 'הטל קוביות' },
       { name: 'coinflip', desc: 'הטלת מטבע' },
       { name: '8ball', desc: 'שאל את כדור הקסם' },
+      { name: 'embed', desc: 'צור הודעה מעוצבת (embed) עם תמונה, צבע ועוד' },
       { name: 'say', desc: 'גרום לבוט לשלוח הודעה' },
       { name: 'cyber', desc: 'פקודות בסגנון האקר' },
       { name: 'report', desc: 'שלח דיווח ליוצר הבוט' },
