@@ -246,6 +246,16 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
+    // ── Promo "not interested" button ──────────────────────────────────────
+    if (interaction.isButton() && interaction.customId === 'pela_promo_no') {
+      await interaction.update({ content: '👍 תודה שקראת! אם תשנה דעתך — תמיד אפשר להוסיף את פלא.', embeds: [], components: [] });
+      try {
+        const logCh = await interaction.client.channels.fetch('1517919493534257363').catch(() => null);
+        if (logCh) await logCh.send(`📋 **${interaction.user.tag}** לחץ "לא מעוניין" על הודעת הגיוס`);
+      } catch {}
+      return;
+    }
+
     // ── Report feedback buttons ───────────────────────────────────────────
     if (interaction.isButton() && interaction.customId === 'report_solved') {
       await interaction.update({
