@@ -93,6 +93,33 @@ client.once(Events.ClientReady, async c => {
   // Bot updates channel
   await checkAndSendUpdate(client, db).catch(err => console.error('[BotUpdates]', err.message));
 
+  // One-time /help announcement
+  const helpAnnounced = db.getPelaConfig('help_announced');
+  if (!helpAnnounced) {
+    db.setPelaConfig('help_announced', '1');
+    const { EmbedBuilder: EB, ActionRowBuilder: AR, ButtonBuilder: BB, ButtonStyle: BS, ChannelType: CT } = require('discord.js');
+    const announceEmbed = new EB()
+      .setColor(0x7C5AF7)
+      .setTitle('🆕 פקודה חדשה — /help')
+      .setDescription('עכשיו יש פקודת `/help` שמראה את כל הפקודות של פלא מסודר לפי קטגוריות!\n\nתשתמשו בה כדי לדעת מה כל פקודה עושה 🚀')
+      .setTimestamp()
+      .setFooter({ text: 'Pela Bot' });
+    const subRow = new AR().addComponents(
+      new BB().setCustomId('pela_subscribe').setLabel('📬 המשך לקבל עדכונים מפלא').setStyle(BS.Success),
+    );
+    const UPDATE_NAMES = ['updates', 'עדכונים', 'announcements', 'הודעות', 'news', 'חדשות', 'bot-updates'];
+    const GENERAL_NAMES = ['general', 'כללי', 'chat', 'צאט', 'lobby'];
+    for (const [, guild] of c.guilds.cache) {
+      const text = guild.channels.cache.filter(ch => ch.type === CT.GuildText && ch.permissionsFor(guild.members.me)?.has('SendMessages'));
+      let target = null;
+      for (const n of UPDATE_NAMES) { target = text.find(ch => ch.name.toLowerCase().includes(n)); if (target) break; }
+      if (!target) for (const n of GENERAL_NAMES) { target = text.find(ch => ch.name.toLowerCase().includes(n)); if (target) break; }
+      if (!target) target = text.first();
+      if (target) target.send({ embeds: [announceEmbed], components: [subRow] }).catch(() => {});
+    }
+    console.log('[Pela] Sent /help announcement to all guilds');
+  }
+
   // Auto-configure Pela's home server (guild 1510637146074120342)
   const { startAutonomousPosts, ensureHomeServerConfig } = require('./src/utils/pelaAI');
   await ensureHomeServerConfig(client, db).catch(e => console.error('[Pela] home config:', e.message));
@@ -210,6 +237,35 @@ client.on(Events.InteractionCreate, async interaction => {
     if (interaction.isModalSubmit() && interaction.customId?.startsWith('wizmod:')) {
       const { handleWizardModal } = require('./src/utils/wizard');
       await handleWizardModal(interaction, db);
+      return;
+    }
+
+    // ── Update subscribe/unsubscribe buttons ──────────────────────────────
+    if (interaction.isButton() && interaction.customId === 'pela_subscribe') {
+      db.addSubscriber(interaction.user.id);
+      try {
+        const creator = await interaction.client.users.fetch('1266854019767341107');
+        await creator.send(`📬 מנוי חדש לעדכונים: **${interaction.user.tag}** (\`${interaction.user.id}\`)`);
+      } catch {}
+      await interaction.reply({ content: '✅ נרשמת לעדכונים מפלא! תקבל הודעות על חידושים ועדכונים.', ephemeral: true });
+      return;
+    }
+    if (interaction.isButton() && interaction.customId === 'pela_unsubscribe') {
+      const { ActionRowBuilder: AR, ButtonBuilder: BB, ButtonStyle: BS } = require('discord.js');
+      const row = new AR().addComponents(
+        new BB().setCustomId('pela_unsub_confirm').setLabel('כן, בטל עדכונים').setStyle(BS.Danger),
+        new BB().setCustomId('pela_unsub_cancel').setLabel('לא, תשאיר').setStyle(BS.Secondary),
+      );
+      await interaction.reply({ content: '⚠️ **אתה בטוח שאתה רוצה להפסיק לקבל עדכונים מפלא?**', components: [row], ephemeral: true });
+      return;
+    }
+    if (interaction.isButton() && interaction.customId === 'pela_unsub_confirm') {
+      db.removeSubscriber(interaction.user.id);
+      await interaction.update({ content: '🔕 הוסרת מרשימת העדכונים. לא תקבל יותר הודעות.', components: [] });
+      return;
+    }
+    if (interaction.isButton() && interaction.customId === 'pela_unsub_cancel') {
+      await interaction.update({ content: '✅ נשארת ברשימת העדכונים!', components: [] });
       return;
     }
 

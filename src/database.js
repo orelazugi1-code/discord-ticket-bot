@@ -232,6 +232,11 @@ db.exec(`
     replacement TEXT NOT NULL,
     PRIMARY KEY (guild_id, user_id)
   );
+
+  CREATE TABLE IF NOT EXISTS update_subscribers (
+    user_id      TEXT PRIMARY KEY,
+    subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // ── Migrations ────────────────────────────────────────────────────────────────
@@ -602,4 +607,9 @@ module.exports = {
   removeUserControl: (gid, uid)      => db.prepare('DELETE FROM user_controls WHERE guild_id=? AND user_id=?').run(gid, uid),
   getUserControls:   (gid)           => db.prepare('SELECT * FROM user_controls WHERE guild_id=?').all(gid),
   getUserControl:    (gid, uid)      => db.prepare('SELECT * FROM user_controls WHERE guild_id=? AND user_id=?').get(gid, uid),
+  // Update subscribers
+  addSubscriber:     (uid) => db.prepare('INSERT OR IGNORE INTO update_subscribers (user_id) VALUES (?)').run(uid),
+  removeSubscriber:  (uid) => db.prepare('DELETE FROM update_subscribers WHERE user_id = ?').run(uid),
+  isSubscribed:      (uid) => !!db.prepare('SELECT 1 FROM update_subscribers WHERE user_id = ?').get(uid),
+  getAllSubscribers:  ()    => db.prepare('SELECT user_id FROM update_subscribers').all(),
 };
