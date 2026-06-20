@@ -147,6 +147,7 @@ client.on(Events.GuildMemberRemove, async member => {
 // ── New server join: DM the owner ───────────────────────────────────────────
 
 client.on(Events.GuildCreate, async guild => {
+  // DM the owner
   try {
     const owner = await guild.fetchOwner();
     await owner.user.send({
@@ -155,6 +156,57 @@ client.on(Events.GuildCreate, async guild => {
     console.log(`[Pela] Welcome DM sent to owner of ${guild.name}`);
   } catch (e) {
     console.error('[Pela] Could not DM guild owner:', e.message);
+  }
+
+  // Register slash commands in the new guild
+  try {
+    const rest = new REST().setToken((process.env.BOT_TOKEN || '').trim());
+    const cmds = client.commands.map(c => c.data.toJSON());
+    await rest.put(Routes.applicationGuildCommands(process.env.CLIENT_ID, guild.id), { body: cmds });
+    console.log(`[Pela] Registered ${cmds.length} commands in new guild ${guild.name}`);
+  } catch (e) {
+    console.error('[Pela] Failed to register commands in new guild:', e.message);
+  }
+
+  // Send /help announcement to the best channel
+  try {
+    const { ChannelType: CT, EmbedBuilder: EB, ActionRowBuilder: AR, ButtonBuilder: BB, ButtonStyle: BS } = require('discord.js');
+    const text = guild.channels.cache.filter(c => c.type === CT.GuildText && c.permissionsFor(guild.members.me)?.has('SendMessages'));
+    const allNames = text.map(c => c.name.toLowerCase());
+    const isHebrew = allNames.some(n => /[֐-׿]/.test(n));
+
+    const UPDATE_NAMES = ['updates', 'announcements', 'news', 'bot-updates', 'עדכונים', 'הודעות', 'חדשות'];
+    const GENERAL_NAMES = ['general', 'chat', 'כללי', 'צאט', 'lobby'];
+    let target = null;
+    for (const n of UPDATE_NAMES) { target = text.find(c => c.name.toLowerCase().includes(n)); if (target) break; }
+    if (!target) for (const n of GENERAL_NAMES) { target = text.find(c => c.name.toLowerCase().includes(n)); if (target) break; }
+    if (!target) target = text.first();
+
+    if (target) {
+      const embed = new EB().setColor(0x7C5AF7).setTimestamp().setFooter({ text: 'Pela Bot' });
+      let subLabel, unsubLabel;
+
+      if (isHebrew) {
+        embed.setTitle('🆕 פקודה חדשה — /help');
+        embed.setDescription('**פלא** קיבלה פקודת `/help` חדשה!\n\nהפקודה מציגה את כל הפקודות מסודרות לפי קטגוריות:\n🛡️ ניהול ומודרציה\n🎫 טיקטים\n⚙️ הגדרות שרת\n⭐ XP ולבלים\n🔧 כלים ופאן\n\nתנסו עכשיו: `/help` 🚀');
+        subLabel = '📬 המשך לקבל עדכונים מפלא';
+        unsubLabel = '🔕 הפסק עדכונים';
+      } else {
+        embed.setTitle('🆕 New Command — /help');
+        embed.setDescription('**Pela** now has a `/help` command!\n\nIt shows all commands organized by category:\n🛡️ Moderation\n🎫 Tickets\n⚙️ Server Setup\n⭐ XP & Levels\n🔧 Tools & Fun\n\nTry it now: `/help` 🚀');
+        subLabel = '📬 Get updates from Pela';
+        unsubLabel = '🔕 Stop updates';
+      }
+
+      const row = new AR().addComponents(
+        new BB().setCustomId('pela_subscribe').setLabel(subLabel).setStyle(BS.Success),
+        new BB().setCustomId('pela_unsubscribe').setLabel(unsubLabel).setStyle(BS.Secondary),
+      );
+      await target.send({ embeds: [embed], components: [row] });
+      console.log(`[Pela] Sent /help announcement to ${guild.name} (${isHebrew ? 'Hebrew' : 'English'}) in #${target.name}`);
+    }
+  } catch (e) {
+    console.error('[Pela] Failed to send announcement in new guild:', e.message);
   }
 });
 
