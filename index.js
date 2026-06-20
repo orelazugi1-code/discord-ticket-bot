@@ -246,6 +246,61 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
+    // ── Report feedback buttons ───────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId === 'report_solved') {
+      await interaction.update({
+        content: '✅ שמחים לשמוע שהבעיה נפתרה! תודה שדיווחת 💪',
+        embeds: interaction.message.embeds,
+        components: [],
+      });
+      try {
+        const creator = await interaction.client.users.fetch('1266854019767341107');
+        await creator.send(`✅ **${interaction.user.tag}** דיווח שהבעיה **נפתרה** בהצלחה!`);
+      } catch {}
+      return;
+    }
+    if (interaction.isButton() && interaction.customId === 'report_unsolved') {
+      const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder: AR } = require('discord.js');
+      const modal = new ModalBuilder()
+        .setCustomId('report_unsolved_modal')
+        .setTitle('הבעיה לא נפתרה');
+      modal.addComponents(
+        new AR().addComponents(
+          new TextInputBuilder()
+            .setCustomId('unsolved_detail')
+            .setLabel('מה עדיין לא עובד?')
+            .setStyle(TextInputStyle.Paragraph)
+            .setPlaceholder('תפרט מה קורה כשאתה מנסה...')
+            .setRequired(true)
+            .setMaxLength(500),
+        ),
+      );
+      await interaction.showModal(modal);
+      return;
+    }
+    if (interaction.isModalSubmit() && interaction.customId === 'report_unsolved_modal') {
+      const detail = interaction.fields.getTextInputValue('unsolved_detail');
+      await interaction.update({
+        content: '📝 תודה על הפירוט! העברנו את זה ליוצר והוא יטפל בזה בהקדם.',
+        embeds: interaction.message.embeds,
+        components: [],
+      });
+      try {
+        const creator = await interaction.client.users.fetch('1266854019767341107');
+        const { EmbedBuilder } = require('discord.js');
+        const embed = new EmbedBuilder()
+          .setColor(0xE74C3C)
+          .setTitle('❌ בעיה לא נפתרה')
+          .addFields(
+            { name: '👤 מדווח', value: `${interaction.user.tag} (\`${interaction.user.id}\`)`, inline: true },
+            { name: '📝 פירוט', value: detail },
+          )
+          .setTimestamp();
+        await creator.send({ embeds: [embed] });
+      } catch {}
+      return;
+    }
+
     // ── Update subscribe/unsubscribe buttons ──────────────────────────────
     if (interaction.isButton() && interaction.customId === 'pela_subscribe') {
       db.addSubscriber(interaction.user.id);
