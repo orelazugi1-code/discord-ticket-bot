@@ -427,7 +427,10 @@ client.on(Events.InteractionCreate, async interaction => {
     }
   } catch (err) {
     console.error('Interaction error:', err);
-    const msg = { content: '❌ An error occurred. Please try again.', ephemeral: true };
+    const errText = interaction.user.id === '1266854019767341107'
+      ? `❌ **שגיאה:**\n\`\`\`${err.stack || err.message}\`\`\``
+      : '❌ An error occurred. Please try again.';
+    const msg = { content: errText, ephemeral: true };
     if (interaction.replied || interaction.deferred) interaction.followUp(msg).catch(() => {});
     else interaction.reply(msg).catch(() => {});
   }
