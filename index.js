@@ -21,6 +21,8 @@ const client = new Client({
   ],
 });
 
+try { db.exec("CREATE TABLE IF NOT EXISTS premium_servers (guild_id TEXT PRIMARY KEY, granted_by TEXT, granted_at DATETIME DEFAULT CURRENT_TIMESTAMP)"); } catch {}
+
 // ── In-memory trackers ────────────────────────────────────────────────────────
 
 const xpCooldowns  = new Map(); // `${guildId}:${userId}` → timestamp
@@ -404,6 +406,8 @@ client.on(Events.MessageCreate, async message => {
   // Server management is done via @mention or AI-chat channel inside a server.
   // Routing admins to aiChat caused the 'pick a server' prompt for casual chat.
   if (!message.guild) {
+    const sp = client.guilds.cache.some(g => { try { return db.isPremium(g.id) && g.members.cache.has(message.author.id); } catch { return false; } });
+    if (!sp && message.author.id !== '1266854019767341107') { await message.reply('\u{1F451} **AI = Premium!** /shop'); return; }
     const { handleDmMessage: pelaDm } = require('./src/utils/pelaAI');
     await pelaDm(message, client, db).catch(console.error);
     return;
@@ -414,6 +418,8 @@ client.on(Events.MessageCreate, async message => {
   const isAiCh     = aiCfg.ai_chat_channel_id && message.channel.id === aiCfg.ai_chat_channel_id;
   const isMentioned = message.mentions.users.has(client.user.id);
   if (isAiCh || isMentioned) {
+    if (!db.isPremium(message.guild.id) && message.author.id !== '1266854019767341107') { await message.reply({ content: '\u{1F451} **AI Premium!** /shop' }); return; }
+    if (!db.isPremium(message.guild.id) && message.author.id !== '1266854019767341107') { await message.reply('👑 **צ\x27אט AI הוא פיצ\x27ר Premium!** כתבו `/shop` לפרטים.'); return; }
     const isAdminUser = message.author.id === '1266854019767341107'
                      || !!message.member?.permissions.has(PermissionFlagsBits.Administrator);
     if (isAdminUser) {

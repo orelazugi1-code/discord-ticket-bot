@@ -148,7 +148,9 @@ module.exports = {
       .setMaxLength(500))
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
-  async execute(interaction) {
+  async execute(interaction, db) {
+    if (!db.isPremium(interaction.guildId)) return interaction.reply({ content: '👑 **פיצ'ר Premium!** כתבו /shop לפרטים.', ephemeral: true });
+
     if (!process.env.GROQ_API_KEY) {
       return interaction.reply({
         content: '❌ `GROQ_API_KEY` is not configured. Add it to your environment variables.',

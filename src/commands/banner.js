@@ -43,7 +43,9 @@ module.exports = {
       ))
     .addChannelOption(o => o.setName('channel').setDescription('Send to this channel (default: current)').setRequired(false))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
-  async execute(interaction) {
+  async execute(interaction, db) {
+    if (!db.isPremium(interaction.guildId)) return interaction.reply({ content: '👑 **פיצ'ר Premium!** כתבו /shop לפרטים.', ephemeral: true });
+
     const description = interaction.options.getString('description');
     const style = interaction.options.getString('style') || '';
     const targetChannel = interaction.options.getChannel('channel');

@@ -16,6 +16,8 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction, db) {
+    if (!db.isPremium(interaction.guildId)) return interaction.reply({ content: '👑 **פיצ'ר Premium!** כתבו /shop לפרטים.', ephemeral: true });
+
     const channel    = interaction.options.getChannel('channel');
     const message    = interaction.options.getString('message')    || 'Click the button below to open a support ticket.';
     const title      = interaction.options.getString('title')      || '🎫 Support Tickets';

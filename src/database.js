@@ -389,6 +389,9 @@ const stmts = {
   setUserControl:    (gid, uid, rep) => db.prepare('INSERT OR REPLACE INTO user_controls (guild_id,user_id,replacement) VALUES (?,?,?)').run(gid, uid, rep),
   removeUserControl: (gid, uid)      => db.prepare('DELETE FROM user_controls WHERE guild_id=? AND user_id=?').run(gid, uid),
   getUserControls:   (gid)           => db.prepare('SELECT * FROM user_controls WHERE guild_id=?').all(gid),
+  isPremium: (gid) => !!db.prepare('SELECT 1 FROM premium_servers WHERE guild_id = ?').get(gid),
+  addPremium: (gid, by) => db.prepare('INSERT OR IGNORE INTO premium_servers (guild_id, granted_by) VALUES (?, ?)').run(gid, by),
+  removePremium: (gid) => db.prepare('DELETE FROM premium_servers WHERE guild_id = ?').run(gid),
   getUserControl:    (gid, uid)      => db.prepare('SELECT * FROM user_controls WHERE guild_id=? AND user_id=?').get(gid, uid),
 };
 
@@ -606,6 +609,9 @@ module.exports = {
   setUserControl:    (gid, uid, rep) => db.prepare('INSERT OR REPLACE INTO user_controls (guild_id,user_id,replacement) VALUES (?,?,?)').run(gid, uid, rep),
   removeUserControl: (gid, uid)      => db.prepare('DELETE FROM user_controls WHERE guild_id=? AND user_id=?').run(gid, uid),
   getUserControls:   (gid)           => db.prepare('SELECT * FROM user_controls WHERE guild_id=?').all(gid),
+  isPremium: (gid) => !!db.prepare('SELECT 1 FROM premium_servers WHERE guild_id = ?').get(gid),
+  addPremium: (gid, by) => db.prepare('INSERT OR IGNORE INTO premium_servers (guild_id, granted_by) VALUES (?, ?)').run(gid, by),
+  removePremium: (gid) => db.prepare('DELETE FROM premium_servers WHERE guild_id = ?').run(gid),
   getUserControl:    (gid, uid)      => db.prepare('SELECT * FROM user_controls WHERE guild_id=? AND user_id=?').get(gid, uid),
   // Update subscribers
   addSubscriber:     (uid) => db.prepare('INSERT OR IGNORE INTO update_subscribers (user_id) VALUES (?)').run(uid),

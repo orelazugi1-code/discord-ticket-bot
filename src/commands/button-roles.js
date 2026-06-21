@@ -23,6 +23,8 @@ module.exports = {
     .addStringOption(o => o.setName('description').setDescription('Embed description').setMaxLength(1000)),
 
   async execute(interaction, db) {
+    if (!db.isPremium(interaction.guildId)) return interaction.reply({ content: '👑 **פיצ'ר Premium!** כתבו /shop לפרטים.', ephemeral: true });
+
     await interaction.deferReply({ ephemeral: true });
 
     const channel = interaction.options.getChannel('channel');

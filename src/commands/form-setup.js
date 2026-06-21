@@ -1,4 +1,4 @@
-﻿const {
+const {
   SlashCommandBuilder, EmbedBuilder, ActionRowBuilder,
   ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits,
 } = require('discord.js');
@@ -74,6 +74,8 @@ module.exports = {
     ),
 
   async execute(interaction, db) {
+    if (!db.isPremium(interaction.guildId)) return interaction.reply({ content: '👑 **פיצ'ר Premium!** כתבו /shop לפרטים.', ephemeral: true });
+
     const sub = interaction.options.getSubcommand();
 
     // ── delete ───────────────────────────────────────────────────────────────
