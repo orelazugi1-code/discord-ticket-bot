@@ -21,8 +21,6 @@ const client = new Client({
   ],
 });
 
-try { db.exec("CREATE TABLE IF NOT EXISTS premium_servers (guild_id TEXT PRIMARY KEY, granted_by TEXT, granted_at DATETIME DEFAULT CURRENT_TIMESTAMP)"); } catch {}
-try { db.exec("CREATE TABLE IF NOT EXISTS premium_users (user_id TEXT PRIMARY KEY, granted_by TEXT, granted_at DATETIME DEFAULT CURRENT_TIMESTAMP)"); } catch {}
 
 // ── In-memory trackers ────────────────────────────────────────────────────────
 

@@ -243,6 +243,12 @@ db.exec(`
     granted_by  TEXT,
     granted_at  DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS premium_servers (
+    guild_id    TEXT PRIMARY KEY,
+    granted_by  TEXT,
+    granted_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // ── Migrations ────────────────────────────────────────────────────────────────
