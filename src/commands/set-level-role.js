@@ -19,7 +19,7 @@ module.exports = {
       .setDescription('List all level role rewards')),
 
   async execute(interaction, db) {
-    if (!db.isPremium(interaction.guildId)) return interaction.reply({ content: '👑 **פיצ'ר Premium!** כתבו /shop לפרטים.', ephemeral: true });
+    if (!db.isPremium(interaction.guildId)) return interaction.reply({ content: '👑 **Premium בלבד!** כתבו /shop לפרטים.', ephemeral: true });
 
     const sub = interaction.options.getSubcommand();
 
