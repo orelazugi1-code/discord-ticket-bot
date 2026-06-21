@@ -79,15 +79,16 @@ function detectLang(text) {
 // ── System prompt ─────────────────────────────────────────────────────────────
 
 function buildSystemPrompt(guild, isOwner, lang = 'en') {
-  const cats = [...guild.channels.cache.values()]
-    .filter(c => c.type === ChannelType.GuildCategory)
-    .sort((a, b) => a.position - b.position).slice(0, 40)
-    .map(c => `  • "${c.name}"`).join('\n') || '  (none)';
+  const allChannels = [...guild.channels.cache.values()];
+  const catList = allChannels.filter(c => c.type === ChannelType.GuildCategory).sort((a, b) => a.position - b.position).slice(0, 40);
+  const childCount = {};
+  for (const c of allChannels) { if (c.parentId) childCount[c.parentId] = (childCount[c.parentId] || 0) + 1; }
+  const cats = catList.map(c => `  • "${c.name}" — ${childCount[c.id] || 0} channels${childCount[c.id] ? '' : ' ⚠️ EMPTY'}`).join('\n') || '  (none)';
 
-  const chs = [...guild.channels.cache.values()]
+  const chs = allChannels
     .filter(c => c.type === ChannelType.GuildText || c.type === ChannelType.GuildVoice)
     .sort((a, b) => a.position - b.position).slice(0, 80)
-    .map(c => `  • "${c.name}" [${c.type === ChannelType.GuildText ? 'text' : 'voice'}]${c.parent ? ` → ${c.parent.name}` : ''}`)
+    .map(c => `  • "${c.name}" [${c.type === ChannelType.GuildText ? 'text' : 'voice'}]${c.parent ? ` → ${c.parent.name}` : ' ⚠️ NO CATEGORY'}`)
     .join('\n') || '  (none)';
 
   const roles = [...guild.roles.cache.values()]
@@ -467,6 +468,11 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
         case 'delete_category': {
           const cat = findCategory(guild, act.name);
           if (!cat) { fails.push(`לא מצאתי קטגוריה: "${act.name}"`); break; }
+          const childrenInCat = [...guild.channels.cache.values()].filter(c => c.parentId === cat.id);
+          if (childrenInCat.length > 0) {
+            fails.push(`🚫 קטגוריה "${cat.name}" מכילה ${childrenInCat.length} ערוצים — לא מוחק קטגוריה שלא ריקה!`);
+            break;
+          }
           const n = cat.name; await cat.delete('AI chat — admin requested');
           done.push(`Deleted category **${n}**`);
           break;
@@ -757,9 +763,14 @@ async function runAiRound(convKey, guild, userText, db, isOwner, channel, userId
     }
 
     if (hasDestructive && dangerActions.length) {
-      storePlan(guild.id, userId, dangerActions);
-      const summary = dangerActions.map(a => `• ${a.type === 'delete_channel' ? '🗑️ ערוץ' : a.type === 'delete_category' ? '🗑️ קטגוריה' : '🗑️ תפקיד'}: **${a.name}**`).join('\n');
-      extra += `\n\n⚠️ **פעולות מחיקה ממתינות לאישור:**\n${summary}`;
+      const maxDelete = 10;
+      const capped = dangerActions.slice(0, maxDelete);
+      if (dangerActions.length > maxDelete) {
+        extra += `\n\n🚫 ה-AI ניסה למחוק ${dangerActions.length} דברים בבת אחת — חתכתי ל-${maxDelete} מקסימום. בקש שוב בקבוצות קטנות.`;
+      }
+      storePlan(guild.id, userId, capped);
+      const summary = capped.map(a => `• ${a.type === 'delete_channel' ? '🗑️ ערוץ' : a.type === 'delete_category' ? '🗑️ קטגוריה' : '🗑️ תפקיד'}: **${a.name}**`).join('\n');
+      extra += `\n\n⚠️ **פעולות מחיקה ממתינות לאישור (${capped.length}):**\n${summary}`;
 
       const confirmRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`ai_confirm:${guild.id}:${userId}`).setLabel('✅ מאשר מחיקה').setStyle(ButtonStyle.Danger),
