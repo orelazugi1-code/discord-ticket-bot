@@ -5,7 +5,8 @@ const OWNER_ID = '1266854019767341107';
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('premium')
-    .setDescription('Manage premium access'),
+    .setDescription('Manage premium access')
+    .setDefaultMemberPermissions('0'),
   async execute(interaction, db) {
     const isOwner = interaction.user.id === OWNER_ID;
     const serverHas = interaction.guildId ? db.isPremium(interaction.guildId) : false;
