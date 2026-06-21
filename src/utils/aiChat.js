@@ -174,7 +174,13 @@ ${chs}
 Roles:
 ${roles}
 
-━━━━ AVAILABLE ACTIONS ━━━━
+━━━━ SMART ACTIONS (code handles the logic — just pick the right one) ━━━━
+  {"type":"cleanup_empty_categories"} — finds and deletes ALL truly empty categories (code verifies!)
+  {"type":"cleanup_duplicate_channels"} — finds duplicate channel names, keeps one, deletes the rest
+  {"type":"organize_server"} — full cleanup: moves orphan channels, deletes empty categories, removes duplicates
+  {"type":"server_report"} — shows a full report of the server structure (categories, channels, issues)
+
+━━━━ MANUAL ACTIONS (you control exactly what happens) ━━━━
 Channels/Categories:
   {"type":"create_category","name":"🎮 Gaming"}
   {"type":"create_text_channel","name":"💬-general","category":"category name or null","topic":"optional"}
@@ -182,19 +188,19 @@ Channels/Categories:
   {"type":"move_channel","name":"exact channel name","category":"exact category name"}
   {"type":"rename_channel","name":"exact current name","new_name":"new-name"}
   {"type":"delete_channel","name":"exact name from list"}
-  {"type":"delete_category","name":"exact name from list"}
+  {"type":"delete_category","name":"exact name from list — MUST be empty!"}
 
-Send to existing channel (use this instead of creating a new one):
+Send to existing channel:
   {"type":"send_message","channel":"exact-channel-name","content":"optional plain text","embed":{"title":"…","description":"…","color":"#HEX","fields":[{"name":"…","value":"…","inline":false}],"footer":"…","thumbnail":"url","image":"url"}}
 
 Roles:
   {"type":"create_role","name":"🎮 Gamer","color":"#FF5733","hoist":true,"mentionable":false}
   {"type":"delete_role","name":"exact name from list"}
 
-Tickets (multi-category: use setup_ticket once, then add_ticket_category for each type):
+Tickets:
   {"type":"setup_ticket","channel":"name","support_roles":["Role1"],"title":"🎫 Support","message":"Click to open","questions":["optional global Q"]}
   {"type":"add_ticket_category","name":"🐛 Bug Report","questions":["Q1","Q2"]}
-  {"type":"clear_ticket_questions"} — removes ALL questions from tickets (no questions asked when opening)
+  {"type":"clear_ticket_questions"} — removes ALL questions from tickets
   {"type":"set_ticket_questions","questions":["Q1","Q2"]} — replace ticket questions
 
 Forms:
@@ -202,6 +208,8 @@ Forms:
 
 Role panels:
   {"type":"setup_button_panel","channel":"name","title":"🎭 Roles","description":"Pick a role","buttons":[{"label":"🎮 Gamer","role":"exact role name"}]}
+
+IMPORTANT: For cleanup/organize tasks, ALWAYS prefer the SMART ACTIONS over manually listing delete actions. The smart actions check the REAL server state in code — they never make mistakes.
 ${ownerSection}
 
 ━━━━ INTERACTIVE UI — use these instead of asking in text ━━━━
@@ -714,6 +722,100 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
           const qs = (act.questions || []).slice(0, 5).map(String);
           db.setTicketQuestions(guild.id, qs);
           done.push(`עדכנתי שאלות טיקט: ${qs.length} שאלות`);
+          break;
+        }
+
+        // ── Smart actions (code-driven, not AI-driven) ─────────────────────
+        case 'cleanup_empty_categories': {
+          const allCh = [...guild.channels.cache.values()];
+          const allCats2 = allCh.filter(c => c.type === ChannelType.GuildCategory);
+          let deleted = 0;
+          for (const cat of allCats2) {
+            const children = allCh.filter(c => c.parentId === cat.id);
+            if (children.length === 0) {
+              await cat.delete('AI: cleanup empty category');
+              done.push(`🗑️ מחקתי קטגוריה ריקה: **${cat.name}**`);
+              deleted++;
+              await sleep(400);
+            }
+          }
+          if (deleted === 0) done.push('✅ אין קטגוריות ריקות — הכל תקין!');
+          break;
+        }
+
+        case 'cleanup_duplicate_channels': {
+          const allCh = [...guild.channels.cache.values()].filter(c => c.type === ChannelType.GuildText);
+          const nameMap = {};
+          for (const ch of allCh) {
+            const base = ch.name.replace(/^[^\w֐-׿]+/, '').replace(/^(server-|server-bot-|bot-)/, '');
+            if (!nameMap[base]) nameMap[base] = [];
+            nameMap[base].push(ch);
+          }
+          let deleted = 0;
+          for (const [base, chs2] of Object.entries(nameMap)) {
+            if (chs2.length <= 1) continue;
+            chs2.sort((a, b) => (a.parentId ? 0 : 1) - (b.parentId ? 0 : 1) || a.createdTimestamp - b.createdTimestamp);
+            for (let i = 1; i < chs2.length; i++) {
+              await chs2[i].delete('AI: cleanup duplicate');
+              done.push(`🗑️ מחקתי כפילות: **#${chs2[i].name}** (נשאר #${chs2[0].name})`);
+              deleted++;
+              await sleep(400);
+            }
+          }
+          if (deleted === 0) done.push('✅ אין כפילויות — הכל תקין!');
+          break;
+        }
+
+        case 'organize_server': {
+          const allCh = [...guild.channels.cache.values()];
+          const orphans = allCh.filter(c => (c.type === ChannelType.GuildText || c.type === ChannelType.GuildVoice) && !c.parentId);
+          if (orphans.length > 0) {
+            let miscCat = allCh.find(c => c.type === ChannelType.GuildCategory && /misc|other|כללי|אחר/i.test(c.name));
+            if (!miscCat) {
+              miscCat = await guild.channels.create({ name: '📂 כללי', type: ChannelType.GuildCategory, reason: 'AI: organize' });
+              done.push('📁 יצרתי קטגוריה **📂 כללי** לערוצים יתומים');
+            }
+            for (const ch of orphans) {
+              await ch.setParent(miscCat.id, { reason: 'AI: organize orphan' });
+              done.push(`📁 העברתי **#${ch.name}** → **${miscCat.name}**`);
+              await sleep(400);
+            }
+          }
+          // cleanup empty categories
+          const freshChs = [...guild.channels.cache.values()];
+          const emptyCats = freshChs.filter(c => c.type === ChannelType.GuildCategory && !freshChs.some(ch => ch.parentId === c.id));
+          for (const cat of emptyCats) {
+            await cat.delete('AI: organize cleanup');
+            done.push(`🗑️ מחקתי קטגוריה ריקה: **${cat.name}**`);
+            await sleep(400);
+          }
+          if (!orphans.length && !emptyCats.length) done.push('✅ השרת מאורגן — הכל תקין!');
+          break;
+        }
+
+        case 'server_report': {
+          const allCh = [...guild.channels.cache.values()];
+          const catList2 = allCh.filter(c => c.type === ChannelType.GuildCategory).sort((a, b) => a.position - b.position);
+          const textChs = allCh.filter(c => c.type === ChannelType.GuildText);
+          const orphans = textChs.filter(c => !c.parentId);
+          const nameCount = {};
+          for (const ch of textChs) {
+            const base = ch.name.replace(/^[^\w֐-׿]+/, '').replace(/^(server-|server-bot-|bot-)/, '');
+            nameCount[base] = (nameCount[base] || 0) + 1;
+          }
+          const dupes = Object.entries(nameCount).filter(([, c]) => c > 1);
+
+          let report = `📊 **דוח שרת: ${guild.name}**\n\n`;
+          report += `📁 **קטגוריות:** ${catList2.length}\n`;
+          for (const cat of catList2) {
+            const children = allCh.filter(c => c.parentId === cat.id);
+            report += `  • ${cat.name} — ${children.length} ערוצים${children.length === 0 ? ' ⚠️ ריקה!' : ''}\n`;
+          }
+          report += `\n💬 **ערוצים:** ${textChs.length}`;
+          if (orphans.length) report += `\n⚠️ **${orphans.length} ערוצים ללא קטגוריה:** ${orphans.map(c => '#' + c.name).join(', ')}`;
+          if (dupes.length) report += `\n⚠️ **${dupes.length} שמות כפולים:** ${dupes.map(([n, c]) => `${n} (×${c})`).join(', ')}`;
+          if (!orphans.length && !dupes.length) report += '\n✅ הכל תקין!';
+          done.push(report);
           break;
         }
 
