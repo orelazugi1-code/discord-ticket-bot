@@ -256,6 +256,12 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
+    
+    // ── Shop free info button
+    if (interaction.isButton() && interaction.customId === 'pela_shop_free') {
+      await interaction.reply({ content: '🆓 **מה בחינם:**\n\n• /help — רשימת כל הפקודות\n• /report — דיווח ליוצר\n• /ban /kick /warn — ניהול בסיסי\n• /purge /lock /unlock — ניהול ערוצים\n• /poll /remind /roll /coinflip — כלים\n• /rank /leaderboard — XP (צפייה בלבד)\n• /embed — הודעות מעוצבות\n\n👑 **Premium מוסיף:** AI חכם, Welcome/Goodbye, טיקטים, טפסים, AutoMod, Button Roles, Glow, Banner AI, Server Design ועוד!', ephemeral: true });
+      return;
+    }
     // ── Report feedback buttons ───────────────────────────────────────────
     if (interaction.isButton() && interaction.customId === 'report_solved') {
       await interaction.update({
