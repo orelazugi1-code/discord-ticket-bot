@@ -97,6 +97,18 @@ NEVER say "Done", "Created X", "Setting up Y" unless X/Y is in your actions arra
 If you cannot do something → say so clearly and leave actions empty.
 If the request is unclear → ask ONE specific question, do NOT guess.
 
+━━━━ CRITICAL: DESTRUCTIVE ACTIONS NEED CONFIRMATION ━━━━
+When the user asks to delete, clean up, reorganize, or remove things:
+1. FIRST: Analyze the server state. List what you PLAN to do in "reply".
+2. Ask for confirmation: "מאשר?" / "Approve?"
+3. Do NOT put delete actions in "actions" until the user says yes/אישור/כן/תתחיל/יאללה.
+4. ORGANIZING ≠ DELETING. When asked to "organize" or "clean up":
+   - MOVE channels to correct categories (use move_channel)
+   - RENAME channels if needed (use rename_channel)
+   - Only DELETE true duplicates or empty channels AFTER confirmation
+   - Create missing categories and move orphan channels into them
+5. NEVER delete and then say "I'll check" — checking comes FIRST, action comes AFTER.
+
 ━━━━ WRITE TO CHANNEL vs CREATE CHANNEL ━━━━
 Use send_message → user wants to POST content to an EXISTING channel (rules, announcements, info text).
 Use create_text_channel → user explicitly wants a NEW channel created.
@@ -104,20 +116,33 @@ CHECK the channel list below before acting. If the channel already exists, use s
 
 ━━━━ EXAMPLES OF CORRECT RESPONSES ━━━━
 User: "create a gaming section with 3 channels"
-{"reply":"Creating the gaming section!","actions":[
+{"reply":"יוצר את סקשן הגיימינג!","actions":[
   {"type":"create_category","name":"🎮 Gaming"},
   {"type":"create_text_channel","name":"🎮-general","category":"🎮 Gaming"},
   {"type":"create_text_channel","name":"🏆-competitive","category":"🎮 Gaming"},
   {"type":"create_voice_channel","name":"🔊 Gaming VC","category":"🎮 Gaming"}
 ]}
 
+User: "תסדר את השרת יש בלאגן" (organize the server)
+{"reply":"בדקתי את השרת. הנה מה שאני מציע:\\n\\n🗑️ **למחוק (כפילויות):** #introductions (מופיע פעמיים), #suggestions (מופיע 3 פעמים)\\n📁 **להעביר קטגוריה:** #rules → 📋 Info, #chat → 💬 General\\n➕ **ליצור קטגוריה:** 📋 Info (לערוצי מידע שמפוזרים)\\n\\nמאשר?","actions":[]}
+
+User: "כן תתחיל" (yes, start — AFTER seeing the plan above)
+{"reply":"מסדר!","actions":[
+  {"type":"create_category","name":"📋 Info"},
+  {"type":"move_channel","name":"rules","category":"📋 Info"},
+  {"type":"move_channel","name":"chat","category":"💬 General"},
+  {"type":"delete_channel","name":"📞-introductions"},
+  {"type":"delete_channel","name":"📝-suggestions"},
+  {"type":"delete_channel","name":"📄-suggestions"}
+]}
+
 User: "write server rules in #rules" (rules channel already exists)
-{"reply":"Posting rules in #rules!","actions":[
-  {"type":"send_message","channel":"rules","embed":{"title":"📋 Server Rules","description":"1. Be respectful\n2. No spam\n3. Follow Discord ToS","color":"#5865F2"}}
+{"reply":"שולח חוקים ל-#rules!","actions":[
+  {"type":"send_message","channel":"rules","embed":{"title":"📋 Server Rules","description":"1. Be respectful\\n2. No spam\\n3. Follow Discord ToS","color":"#5865F2"}}
 ]}
 
 User: "set up tickets with 2 categories: bug reports and general support"
-{"reply":"Setting up ticket system!","actions":[
+{"reply":"מגדיר מערכת טיקטים!","actions":[
   {"type":"setup_ticket","channel":"tickets","support_roles":[],"title":"🎫 Support","message":"Click to open a ticket"},
   {"type":"add_ticket_category","name":"🐛 Bug Report","questions":["Describe the bug","Steps to reproduce"]},
   {"type":"add_ticket_category","name":"❓ General Support","questions":["How can we help?"]}
@@ -138,6 +163,8 @@ Channels/Categories:
   {"type":"create_category","name":"🎮 Gaming"}
   {"type":"create_text_channel","name":"💬-general","category":"category name or null","topic":"optional"}
   {"type":"create_voice_channel","name":"🔊 VC","category":"category name or null"}
+  {"type":"move_channel","name":"exact channel name","category":"exact category name"}
+  {"type":"rename_channel","name":"exact current name","new_name":"new-name"}
   {"type":"delete_channel","name":"exact name from list"}
   {"type":"delete_category","name":"exact name from list"}
 
@@ -168,13 +195,15 @@ ${ownerSection}
 
 ━━━━ RULES ━━━━
 1. Respond in the SAME LANGUAGE as the admin (Hebrew → Hebrew, English → English).
-2. Keep "reply" SHORT — one sentence. All work goes in "actions".
+2. Keep "reply" SHORT — but for organize/cleanup requests, list the full plan first.
 3. Channel/category names include a thematic emoji unless they already exist in the list.
 4. Use EXACT names from the server state for existing channels/roles/categories.
-5. NEVER delete unless admin explicitly says "delete" / "remove" / "מחק" / "הסר".
+5. NEVER delete unless admin explicitly says "delete"/"remove"/"מחק"/"הסר" OR confirms your cleanup plan.
 6. Return ONLY valid JSON — nothing outside the JSON object.
 7. Prefer start_ticket_wizard over setup_ticket — it guides the admin step by step with Discord UI.
-8. Prefer start_form_wizard over setup_form — same reason.`;
+8. Prefer start_form_wizard over setup_form — same reason.
+9. NEVER say "I'm checking" or "I'll analyze" and then put actions in the same response. Check = reply only, act = next message.
+10. When organizing: MOVE first, DELETE only duplicates, CREATE categories for orphans. Organizing ≠ deleting everything.`;
 }
 
 // ── Groq ──────────────────────────────────────────────────────────────────────
@@ -366,7 +395,7 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
 
     // Block dangerous owner-only actions for non-owners
     if (['clone_server', 'list_guilds'].includes(act.type) && !isOwner) {
-      fails.push(`"${act.type}" is restricted to the bot owner`);
+      fails.push(`"${act.type}" זמין רק לבעלים`);
       continue;
     }
 
@@ -393,9 +422,28 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
           break;
         }
 
+        case 'move_channel': {
+          const ch = findChannel(guild, act.name);
+          if (!ch) { fails.push(`לא מצאתי ערוץ: "${act.name}"`); break; }
+          const targetCat = findCategory(guild, act.category);
+          if (!targetCat) { fails.push(`לא מצאתי קטגוריה: "${act.category}"`); break; }
+          await ch.setParent(targetCat.id, { reason: 'AI chat — organize' });
+          done.push(`Moved **#${ch.name}** → **${targetCat.name}**`);
+          break;
+        }
+
+        case 'rename_channel': {
+          const ch = findChannel(guild, act.name);
+          if (!ch) { fails.push(`לא מצאתי ערוץ: "${act.name}"`); break; }
+          const oldName = ch.name;
+          await ch.setName(act.new_name.slice(0, 100), { reason: 'AI chat — rename' });
+          done.push(`Renamed **#${oldName}** → **#${act.new_name}**`);
+          break;
+        }
+
         case 'delete_channel': {
           const ch = findChannel(guild, act.name);
-          if (!ch) { fails.push(`Channel not found: "${act.name}"`); break; }
+          if (!ch) { fails.push(`לא מצאתי ערוץ: "${act.name}"`); break; }
           const n = ch.name; await ch.delete('AI chat — admin requested');
           done.push(`Deleted channel **${n}**`);
           break;
@@ -403,7 +451,7 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
 
         case 'delete_category': {
           const cat = findCategory(guild, act.name);
-          if (!cat) { fails.push(`Category not found: "${act.name}"`); break; }
+          if (!cat) { fails.push(`לא מצאתי קטגוריה: "${act.name}"`); break; }
           const n = cat.name; await cat.delete('AI chat — admin requested');
           done.push(`Deleted category **${n}**`);
           break;
@@ -417,7 +465,7 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
 
         case 'delete_role': {
           const role = findRole(guild, act.name);
-          if (!role) { fails.push(`Role not found: "${act.name}"`); break; }
+          if (!role) { fails.push(`לא מצאתי תפקיד: "${act.name}"`); break; }
           const n = role.name; await role.delete('AI chat — admin requested');
           done.push(`Deleted role **${n}**`);
           break;
@@ -426,7 +474,7 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
         // ── Ticket system (uses bot's existing infrastructure) ───────────────
         case 'setup_ticket': {
           const ch = findChannel(guild, act.channel);
-          if (!ch) { fails.push(`Channel not found: "${act.channel}"`); break; }
+          if (!ch) { fails.push(`לא מצאתי ערוץ: "${act.channel}"`); break; }
 
           const roleIds = (act.support_roles || []).map(n => findRole(guild, n)?.id).filter(Boolean);
           db.updateGuildConfig(guild.id, {
@@ -476,7 +524,7 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
         // ── Form system (uses bot's existing form infrastructure) ────────────
         case 'setup_form': {
           const ch    = findChannel(guild, act.channel);
-          if (!ch) { fails.push(`Channel not found: "${act.channel}"`); break; }
+          if (!ch) { fails.push(`לא מצאתי ערוץ: "${act.channel}"`); break; }
           const logCh = act.log_channel ? findChannel(guild, act.log_channel) : null;
 
           const formId = db.createForm(guild.id, {
@@ -506,10 +554,10 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
         // ── Button role panel (uses bot's existing button-roles system) ──────
         case 'setup_button_panel': {
           const ch = findChannel(guild, act.channel);
-          if (!ch) { fails.push(`Channel not found: "${act.channel}"`); break; }
+          if (!ch) { fails.push(`לא מצאתי ערוץ: "${act.channel}"`); break; }
 
           const validBtns = (act.buttons ?? []).map(b => ({ btn: b, role: findRole(guild, b.role) })).filter(x => x.role);
-          if (!validBtns.length) { fails.push('No valid roles found for button panel'); break; }
+          if (!validBtns.length) { fails.push('לא מצאתי תפקידים תקינים לפאנל'); break; }
 
           const roleIds = validBtns.map(x => x.role.id);
           const panelId = db.createButtonRole(guild.id, ch.id, act.title ?? 'Role Panel', act.description ?? '', roleIds);
@@ -537,7 +585,7 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
         // ── Rich embed (owner + admins) ───────────────────────────────────────
         case 'create_embed': {
           const ch = findChannel(guild, act.channel);
-          if (!ch) { fails.push(`Channel not found: "${act.channel}"`); break; }
+          if (!ch) { fails.push(`לא מצאתי ערוץ: "${act.channel}"`); break; }
           const embed = new EmbedBuilder().setColor(safeHex(act.color) || 0x5865F2);
           if (act.title)       embed.setTitle(String(act.title).slice(0, 256));
           if (act.description) embed.setDescription(String(act.description).slice(0, 4096));
@@ -559,7 +607,7 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
         // ── Owner-only: clone server ─────────────────────────────────────────
         case 'clone_server': {
           if (!guild.members.me?.permissions.has(PermissionFlagsBits.ManageGuild)) {
-            fails.push('Bot needs Manage Server permission to create a template'); break;
+            fails.push('חסרה הרשאת Manage Server ליצירת תבנית'); break;
           }
           const existing = await guild.fetchTemplates().catch(() => null);
           if (existing?.size > 0) for (const t of existing.values()) await t.delete().catch(() => {});
@@ -578,7 +626,7 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
 
         case 'send_message': {
           const ch = findChannel(guild, act.channel);
-          if (!ch) { fails.push(`Channel not found: "${act.channel}"`); break; }
+          if (!ch) { fails.push(`לא מצאתי ערוץ: "${act.channel}"`); break; }
           const opts = {};
           if (act.content) opts.content = String(act.content).slice(0, 2000);
           if (act.embed) {
@@ -597,7 +645,7 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
             }
             opts.embeds = [em];
           }
-          if (!opts.content && !opts.embeds) { fails.push('send_message: provide content or embed'); break; }
+          if (!opts.content && !opts.embeds) { fails.push('send_message: צריך content או embed'); break; }
           await ch.send(opts);
           done.push(`Message sent to **#${ch.name}**`);
           break;
@@ -628,7 +676,7 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
         }
 
                 default:
-          fails.push(`Unknown action: ${act.type}`);
+          fails.push(`פעולה לא מוכרת: ${act.type}`);
       }
     } catch (e) {
       fails.push(`${act.type} failed: ${e.message}`);
