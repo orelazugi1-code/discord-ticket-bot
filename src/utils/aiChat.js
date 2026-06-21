@@ -10,7 +10,7 @@ const axios = require('axios');
 const PROVIDERS = [
   { name: 'Groq',       envKey: 'GROQ_API_KEY',       type: 'openai',  jsonMode: true,
     url: 'https://api.groq.com/openai/v1/chat/completions',
-    model: 'llama-3.3-70b-versatile' },
+    model: 'gemma2-9b-it' },
   { name: 'Gemini',     envKey: 'GEMINI_API_KEY',      type: 'gemini',  jsonMode: true,
     url: 'https://generativelanguage.googleapis.com/v1beta/models',
     model: 'gemini-2.0-flash' },
@@ -698,14 +698,14 @@ async function runAiRound(convKey, guild, userText, db, isOwner, channel, userId
 
 async function handleGuildMessage(message, db) {
   if (!message.guild) return;
-  if (!PROVIDERS.some(isConfigured)) return message.reply({ content: '❌ No AI provider configured. Set GROQ_API_KEY, GEMINI_API_KEY, MISTRAL_API_KEY, or OPENROUTER_API_KEY.', ephemeral: true });
+  if (!PROVIDERS.some(isConfigured)) return message.reply({ content: '❌ אין מודל AI מוגדר. פנה ליוצר.' });
 
   const isOwner = message.author.id === OWNER_ID;
   // Owner bypasses the admin check; everyone else must be Administrator
   if (!isOwner && !message.member?.permissions.has(PermissionFlagsBits.Administrator)) return;
 
   const userText = message.content.replace(/<@!?\d+>/g, '').trim();
-  if (!userText) return message.reply({ content: '👋 Tell me what to do with this server.' });
+  if (!userText) return message.reply({ content: '👋 מה אני יכול לעזור?' });
 
   const convKey     = `guild:${message.guild.id}:${message.author.id}`;
   const typingPulse = setInterval(() => message.channel.sendTyping().catch(() => {}), 9000);
@@ -716,7 +716,11 @@ async function handleGuildMessage(message, db) {
     await sendReply(message, fullReply);
   } catch (e) {
     console.error('[aiChat] guild error:', e.response?.data?.error?.message ?? e.message);
-    await message.reply({ content: `❌ AI error: \`${e.response?.data?.error?.message ?? e.message}\`` });
+    const isOwnerUser = message.author.id === OWNER_ID;
+    const errText = isOwnerUser
+      ? `❌ **שגיאה:**\n\`\`\`${e.stack || e.message}\`\`\``
+      : '❌ אופס, משהו השתבש. נסה שוב!';
+    await message.reply({ content: errText });
   } finally {
     clearInterval(typingPulse);
   }
@@ -725,7 +729,7 @@ async function handleGuildMessage(message, db) {
 // ── DM handler ────────────────────────────────────────────────────────────────
 
 async function handleDmMessage(message, client, db) {
-  if (!PROVIDERS.some(isConfigured)) return message.reply({ content: '❌ No AI provider configured. Set GROQ_API_KEY, GEMINI_API_KEY, MISTRAL_API_KEY, or OPENROUTER_API_KEY.' });
+  if (!PROVIDERS.some(isConfigured)) return message.reply({ content: '❌ אין מודל AI מוגדר כרגע. נסה שוב מאוחר יותר.' });
 
   const userId   = message.author.id;
   const isOwner  = userId === OWNER_ID;
@@ -737,7 +741,7 @@ async function handleDmMessage(message, client, db) {
   try {
     if (!conv.guildId) {
       const guilds = [...client.guilds.cache.values()];
-      if (!guilds.length) { await message.reply({ content: "I'm not in any servers." }); return; }
+      if (!guilds.length) { await message.reply({ content: 'אני לא בשום שרת כרגע.' }); return; }
 
       const input = message.content.trim();
       const num   = parseInt(input, 10);
@@ -750,15 +754,15 @@ async function handleDmMessage(message, client, db) {
 
       if (!conv.guildId) {
         const list = guilds.map((g, i) => `**${i + 1}.** ${g.name}`).join('\n');
-        await message.reply({ content: `Which server do you want to manage? Reply with a number:\n\n${list}` });
+        await message.reply({ content: `באיזה שרת תרצה לנהל? שלח מספר:\n\n${list}` });
         return;
       }
-      await message.reply({ content: `✅ Managing **${client.guilds.cache.get(conv.guildId).name}**. What would you like to do?` });
+      await message.reply({ content: `✅ מנהל את **${client.guilds.cache.get(conv.guildId).name}**. מה תרצה לעשות?` });
       return;
     }
 
     const guild = client.guilds.cache.get(conv.guildId);
-    if (!guild) { conv.guildId = null; await message.reply({ content: 'Server unavailable. Please start over.' }); return; }
+    if (!guild) { conv.guildId = null; await message.reply({ content: 'השרת לא זמין. שלח שוב הודעה כדי לבחור שרת.' }); return; }
 
     const userText = message.content.trim();
     if (!userText) return;
@@ -767,7 +771,11 @@ async function handleDmMessage(message, client, db) {
     await sendReply(message, fullReply);
   } catch (e) {
     console.error('[aiChat] DM error:', e.response?.data?.error?.message ?? e.message);
-    await message.reply({ content: `❌ AI error: \`${e.response?.data?.error?.message ?? e.message}\`` });
+    const isOwnerUser = message.author.id === OWNER_ID;
+    const errText = isOwnerUser
+      ? `❌ **שגיאה:**\n\`\`\`${e.stack || e.message}\`\`\``
+      : '❌ אופס, משהו השתבש. נסה שוב!';
+    await message.reply({ content: errText });
   } finally {
     clearInterval(typingPulse);
   }

@@ -6,18 +6,16 @@ const {
 const axios = require('axios');
 
 const OWNER_ID   = '1266854019767341107';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_MODEL = 'gemma2-9b-it';
 const CONV_TTL   = 30 * 60_000;
 
-const HOME_SERVER_ID    = '1510637146074120342'; // Pela's home server
+const HOME_SERVER_ID    = '1510637146074120342';
 const STAFF_ROLE_NAMES  = ['staff', 'support', 'moderator', 'mod', 'team', 'helper', 'admin'];
-const serverMentions = new Map();              // userId → msg count since last server mention
-const permCache      = new Map();              // userId → { perm, guilds, at } (5-min TTL)
-const ticketReplied  = new Map();              // ticketId → timestamp (rate-limit ticket replies)
-const firstInviteSent = new Set();             // userIds who received the first explicit invite
-const inviteCache    = { url: null, at: 0 };  // cache invite URL for 1 hour
-
-// ── Conversation store (separate from server-management AI) ───────────────────
+const serverMentions = new Map();
+const permCache      = new Map();
+const ticketReplied  = new Map();
+const firstInviteSent = new Set();
+const inviteCache    = { url: null, at: 0 };
 
 const convs = new Map();
 
@@ -41,12 +39,10 @@ function push(key, role, content) {
 
 async function getHomeInvite(client, db) {
   if (inviteCache.url && Date.now() - inviteCache.at < 3_600_000) return inviteCache.url;
-  // First check manually stored invite (set via /pela-server invite <url>)
   if (db) {
     const stored = db.getPelaConfig('home_invite_url');
     if (stored) { inviteCache.url = stored; inviteCache.at = Date.now(); return stored; }
   }
-  // Try to create one (requires CREATE_INSTANT_INVITE)
   const guild = client.guilds.cache.get(HOME_SERVER_ID);
   if (!guild) return null;
   try {
@@ -99,76 +95,108 @@ async function getSharedGuilds(userId, client) {
   return out;
 }
 
-// ── AI prompt (Pela's personality) ───────────────────────────────────────────
+// ── Check bot permissions in guild ────────────────────────────────────────────
 
-function buildPrompt(permLevel, lang, opts = {}) {
-  const langLine = lang === 'he' ? '🇮🇱 Respond in Hebrew.' : 'Respond in English.';
-  const name = opts.displayName || 'the user';
-
-  const serverContext = opts.currentServer
-    ? `You are currently in the server **${opts.currentServer}**.`
-    : opts.sharedServers?.length
-      ? `You share these servers with ${name}: ${opts.sharedServers.join(', ')}.`
-      : `You don't know which servers ${name} is in.`;
-
-  const tierNote = permLevel === 'user'
-    ? `${name} is a regular community member.
-
-ACTIONS YOU CAN TAKE:
-- Assign a self-assignable role → action {"type":"give_role","role_name":"Member"}
-- Show available roles → action {"type":"show_roles"}
-- Send server invite → action {"type":"show_invite"}
-- Submit approval request → action {"type":"request_approval","description":"..."}
-
-ROLE RULES:
-- Basic roles (Member etc.) → assign immediately
-- VIP/Special → ask why they deserve it first. Real reason → give. "I want it" → decline politely.
-- Staff/Mod → run 3-question quiz first (one at a time), then decide yourself.
-
-STAFF QUIZ (one question per message):
-1. "Why do you want to join the team?"
-2. "What timezone are you in and how active can you be?"
-3. "How would you handle a conflict between two members?"
-After all 3 → decide yourself. Good answers → accept. Weak → decline.`
-    : permLevel === 'staff'
-      ? `${name} is a staff member. Help them manage the community.`
-      : `${name} is an admin or the bot owner. Full trust.`;
-
-  return `${langLine}
-
-You are Pela — a smart, warm Discord community bot with real personality.
-
-${serverContext}
-
-${tierNote}
-
-CRITICAL RULES — NEVER BREAK THESE:
-1. NEVER pretend to know things you don't. If you don't know something, say so honestly.
-2. NEVER claim to be in a server you're not in, or know a server's details you haven't been told.
-3. NEVER make up information about servers, channels, roles, or users.
-4. If someone asks about a server — only answer if you have real context about it.
-5. Be honest about your limitations. You CANNOT: delete messages, create channels from DMs, give admin perms, read message history.
-
-YOUR PERSONALITY:
-• Friendly, witty, genuinely caring — like a smart friend, not a corporate bot
-• You give real opinions, chat casually, use humor when appropriate
-• Concise — 1-3 sentences usually, never ramble
-• You adapt your language and tone to match the person
-• If someone speaks Hebrew, respond in Hebrew naturally
-
-Return JSON only: {"reply":"your message","action":null}
-Or with action: {"reply":"text","action":{"type":"show_roles"}}${opts.isHomeServer ? `
-
-HOME SERVER — YOU OWN THIS SERVER:
-You are the creator, owner, and ONLY decision maker. There is NO staff team.
-Never say "I'll send to staff" — YOU are the staff. Make all decisions yourself.
-After quiz acceptance: say "You're in! Welcome to the team! 🎉" (system assigns role automatically).` : ''}${opts.inviteUrl ? `
-
-HINT: If natural, casually mention your server: ${opts.inviteUrl}` : ''}`;
+function checkBotPermissions(guild) {
+  const me = guild.members.me;
+  if (!me) return { ok: false, missing: ['לא נמצא בשרת'] };
+  const needed = [
+    { perm: PermissionFlagsBits.ManageRoles, name: 'Manage Roles' },
+    { perm: PermissionFlagsBits.ManageChannels, name: 'Manage Channels' },
+    { perm: PermissionFlagsBits.SendMessages, name: 'Send Messages' },
+    { perm: PermissionFlagsBits.EmbedLinks, name: 'Embed Links' },
+    { perm: PermissionFlagsBits.ManageMessages, name: 'Manage Messages' },
+  ];
+  const missing = needed.filter(n => !me.permissions.has(n.perm)).map(n => n.name);
+  return { ok: missing.length === 0, missing };
 }
 
-// ── AI call with multi-provider fallback (Groq → Gemini → Mistral → OpenRouter) ──
-// Lazy-require aiChat to avoid circular dependency
+// ── Available commands list for AI context ────────────────────────────────────
+
+function getCommandList() {
+  return [
+    '/help — רשימת כל הפקודות',
+    '/report — דיווח על בעיה',
+    '/ban — באן למשתמש',
+    '/kick — קיק למשתמש',
+    '/warn — אזהרה',
+    '/purge — מחיקת הודעות',
+    '/lock — נעילת ערוץ',
+    '/unlock — פתיחת ערוץ',
+    '/poll — הצבעה',
+    '/remind — תזכורת',
+    '/roll — הטלת קוביה',
+    '/coinflip — הטלת מטבע',
+    '/rank — דירוג XP',
+    '/leaderboard — טבלת מובילים',
+    '/embed — הודעה מעוצבת',
+    '/ai-chat — הגדרת ערוץ AI (Premium)',
+    '/welcome-setup — הודעות קבלת פנים (Premium)',
+    '/goodbye-setup — הודעות פרידה (Premium)',
+    '/ticket-setup — מערכת טיקטים (Premium)',
+    '/form-setup — טפסים (Premium)',
+    '/automod — ניהול אוטומטי (Premium)',
+    '/button-roles — תפקידים בכפתורים (Premium)',
+    '/glow — אפקט זוהר (Premium)',
+    '/banner — באנר AI (Premium)',
+    '/design-server — עיצוב שרת AI (Premium)',
+    '/pela-setup — הגדרה אוטומטית (Premium)',
+    '/staff-setup — הגדרת צוות (Premium)',
+    '/set-level-role — תפקיד לפי רמה (Premium)',
+    '/premium — ניהול Premium (בעלים בלבד)',
+  ].join('\n');
+}
+
+// ── AI prompt (Pela's personality — upgraded) ────────────────────────────────
+
+function buildPrompt(permLevel, lang, opts = {}) {
+  const name = opts.displayName || 'the user';
+  const isHe = lang === 'he';
+
+  const serverInfo = opts.currentServer
+    ? `אתה נמצא בשרת **${opts.currentServer}**.`
+    : opts.sharedServers?.length
+      ? `אתה חולק שרתים עם ${name}: ${opts.sharedServers.join(', ')}.`
+      : '';
+
+  const guildContext = opts.guildRoles ? `\nתפקידים בשרת: ${opts.guildRoles}` : '';
+  const guildChannels = opts.guildChannels ? `\nערוצים בשרת: ${opts.guildChannels}` : '';
+  const botPerms = opts.botPermissions || '';
+  const premiumStatus = opts.isPremiumServer ? '✅ לשרת הזה יש Premium — כל הפקודות פתוחות.' : '❌ לשרת הזה אין Premium — רק פקודות בסיסיות.';
+
+  return `${isHe ? '🇮🇱 דבר תמיד בעברית טבעית.' : '🌐 Respond in English.'}
+
+אתה **פלא** — בוט AI חכם, חם ואמיתי לניהול קהילות Discord.
+${serverInfo}${guildContext}${guildChannels}
+${premiumStatus}
+
+${name} הוא ${permLevel === 'owner' ? 'היוצר והבעלים של הבוט — אמון מלא.' : permLevel === 'admin' ? 'אדמין בשרת — סמכות גבוהה.' : permLevel === 'staff' ? 'חבר צוות — עוזר לנהל.' : 'משתמש רגיל.'} ${botPerms}
+
+📋 **פקודות שזמינות:**
+${getCommandList()}
+
+🧠 **כללים קריטיים:**
+1. אתה עוזר, חם, ידידותי — כמו חבר חכם, לא בוט תאגידי.
+2. תשובות קצרות — 1-3 משפטים. אל תפטפט.
+3. אם מבקשים ממך משהו שיש לו פקודה — תגיד איזו פקודה להשתמש ותסביר בקצרה.
+4. אם אתה לא יכול לעשות משהו — תגיד בכנות "אני לא יכול לעשות את זה" ולמה.
+5. אם לא מצאת רול/ערוץ/משתמש — תגיד "לא מצאתי את [מה שחיפשת]" בצורה ברורה.
+6. אל תגיד "ביצעתי!" אם לא באמת ביצעת. תוודא לפני.
+7. אם חסרות לך הרשאות — תגיד מה חסר ותסביר איך להוסיף.
+8. אם השרת לא Premium ומבקשים פיצ'ר Premium — תגיד שזה Premium ותציע /shop.
+9. תתאים את השפה למשתמש — עברית? דבר עברית. אנגלית? דבר אנגלית.
+10. אם מישהו שואל שאלה כללית (לא קשורה לשרת) — תענה בכיף, אתה לא מוגבל רק לניהול.
+
+🎭 **אישיות:**
+• חבר'ה, ידידותי, עם הומור כשמתאים
+• עוזר באמת — לא סתם אומר "פנה לצוות"
+• מסביר דברים בפשטות
+• משתמש באימוג'ים בטעם
+
+Return JSON: {"reply":"your message"}`;
+}
+
+// ── AI call ──────────────────────────────────────────────────────────────────
 
 async function callPelaAI(prompt, history, userText) {
   const { callAiWithFallback } = require('./aiChat');
@@ -180,11 +208,13 @@ function parseResp(raw) {
     const p = JSON.parse(raw);
     return { reply: String(p.reply || '👋'), action: p.action || null };
   } catch {
+    const m = raw.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (m) return { reply: m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'), action: null };
     return { reply: raw.replace(/\{[\s\S]*\}/g, '').trim() || '👋', action: null };
   }
 }
 
-// ── Role selector ─────────────────────────────────────────────────────────────
+// ── Role selector ────────────────────────────────────────────────────────────
 
 async function showRoleSelector(channel, userId, client, db) {
   const guilds = await getSharedGuilds(userId, client);
@@ -193,26 +223,25 @@ async function showRoleSelector(channel, userId, client, db) {
       const cfg      = db.getGuildConfig(g.id);
       const roleIds  = JSON.parse(cfg.self_assignable_roles || '[]');
       if (!roleIds.length) continue;
-      // Fetch roles if not in cache
       if (g.roles.cache.size < 2) await g.roles.fetch().catch(() => {});
       const roles    = roleIds.map(id => g.roles.cache.get(id)).filter(Boolean).slice(0, 25);
       if (!roles.length) continue;
       const member   = g.members.cache.get(userId) || await g.members.fetch(userId).catch(() => null);
       const sel = new StringSelectMenuBuilder()
         .setCustomId(`self_role:assign:${g.id}:${userId}`)
-        .setPlaceholder('Select a role to toggle...')
+        .setPlaceholder('בחר תפקיד...')
         .addOptions(roles.map(r => new StringSelectMenuOptionBuilder()
           .setLabel(r.name).setValue(r.id)
-          .setDescription(member?.roles.cache.has(r.id) ? '✅ You have this (click to remove)' : 'Click to get this role')
+          .setDescription(member?.roles.cache.has(r.id) ? '✅ יש לך (לחץ להסרה)' : 'לחץ לקבלה')
         ));
       await channel.send({
-        content: `Here are the self-assignable roles in **${g.name}**:`,
+        content: `הנה התפקידים הזמינים ב-**${g.name}**:`,
         components: [new ActionRowBuilder().addComponents(sel)],
       });
       return;
     } catch {}
   }
-  await channel.send({ content: "No self-assignable roles are configured in our shared servers right now!" });
+  await channel.send({ content: 'אין תפקידים זמינים לבחירה עצמית כרגע.' });
 }
 
 // ── Direct role assignment ────────────────────────────────────────────────────
@@ -236,16 +265,27 @@ async function assignRoleDirectly(channel, userId, action, client, db) {
       if (!member) continue;
       if (member.roles.cache.has(role.id)) {
         await member.roles.remove(role.id);
-        await channel.send({ content: `Done! Removed the **${role.name}** role in **${g.name}** ✅` });
+        await channel.send({ content: `✅ הסרתי את התפקיד **${role.name}** ב-**${g.name}**` });
       } else {
         await member.roles.add(role.id);
-        await channel.send({ content: `Done! Gave you the **${role.name}** role in **${g.name}** 🎉` });
+        await channel.send({ content: `✅ נתתי לך את התפקיד **${role.name}** ב-**${g.name}** 🎉` });
       }
       return;
-    } catch (e) { console.error('[pelaAI] give_role error:', e.message); }
+    } catch (e) {
+      if (e.code === 50013) {
+        await channel.send({
+          content: `❌ אין לי הרשאה לנהל תפקידים ב-**${g.name}**`,
+          components: [new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setLabel('הוסף הרשאת Manage Roles').setStyle(ButtonStyle.Link)
+              .setURL(`https://discord.com/api/oauth2/authorize?client_id=1507712315678527558&permissions=268435456&scope=bot`)
+          )]
+        });
+        return;
+      }
+      console.error('[pelaAI] give_role error:', e.message);
+    }
   }
-  // Role not found — fall back to showing the picker
-  await channel.send({ content: `I couldn't find a self-assignable role called "${wantedName}". Here's what's available:` });
+  await channel.send({ content: `לא מצאתי תפקיד בשם "${wantedName}" ברשימת התפקידים הזמינים.` });
   await showRoleSelector(channel, userId, client, db);
 }
 
@@ -255,34 +295,34 @@ async function sendApprovalRequest(channel, userId, action, client, db) {
   const guilds = await getSharedGuilds(userId, client);
   const target = guilds.find(g => { try { return !!db.getGuildConfig(g.id).staff_role_id; } catch { return false; } })
               || guilds[0];
-  if (!target) { await channel.send({ content: "I'm not in any of your servers, so I can't send an approval request." }); return; }
+  if (!target) { await channel.send({ content: 'אני לא בשום שרת משותף איתך, אז אני לא יכול לשלוח בקשה.' }); return; }
 
   const cfg      = db.getGuildConfig(target.id);
   const staffCh  = cfg.staff_channel_id
     ? target.channels.cache.get(cfg.staff_channel_id)
     : target.channels.cache.find(c => c.type === 0 && /staff|mod|log|admin/i.test(c.name));
-  if (!staffCh) { await channel.send({ content: `I couldn't find a staff channel in **${target.name}**. Ask an admin to set one up!` }); return; }
+  if (!staffCh) { await channel.send({ content: `לא מצאתי ערוץ צוות ב-**${target.name}**. תבקש מאדמין להגדיר אחד.` }); return; }
 
   const user  = await client.users.fetch(userId).catch(() => null);
-  const appId = db.createPendingApproval(target.id, userId, 'custom', JSON.stringify(action), action.description || 'Custom request');
+  const appId = db.createPendingApproval(target.id, userId, 'custom', JSON.stringify(action), action.description || 'בקשה');
   const embed = new EmbedBuilder()
-    .setTitle('📋 Approval Request').setColor(0xfaa61a)
-    .setDescription(`A community member is requesting:\n\n**${action.description}**`)
+    .setTitle('📋 בקשה חדשה').setColor(0xfaa61a)
+    .setDescription(`חבר קהילה מבקש:\n\n**${action.description}**`)
     .addFields(
-      { name: 'Requested by', value: `<@${userId}> (${user?.tag || userId})`, inline: true },
-      { name: 'Server',       value: target.name,                             inline: true },
+      { name: '👤 מבקש', value: `<@${userId}> (${user?.tag || userId})`, inline: true },
+      { name: '🏠 שרת', value: target.name, inline: true },
     ).setTimestamp();
 
   const staffMention = cfg.staff_role_id ? `<@&${cfg.staff_role_id}> ` : '';
   await staffCh.send({
-    content: `${staffMention}New request needs your attention:`,
+    content: `${staffMention}בקשה חדשה:`,
     embeds:  [embed],
     components: [new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`aprv:approve:${appId}`).setLabel('✅ Approve').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`aprv:deny:${appId}`).setLabel('❌ Deny').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`aprv:approve:${appId}`).setLabel('✅ אישור').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`aprv:deny:${appId}`).setLabel('❌ דחייה').setStyle(ButtonStyle.Danger),
     )],
   });
-  await channel.send({ content: `✅ Done! Sent your request to the staff team in **${target.name}**. They'll review it soon!` });
+  await channel.send({ content: `✅ שלחתי את הבקשה לצוות ב-**${target.name}**!` });
 }
 
 // ── Autonomous community posts ────────────────────────────────────────────────
@@ -307,18 +347,16 @@ async function generateCommunityPost() {
 async function postCommunityMessage(client, db) {
   const serverId  = db.getPelaConfig('pela_server_id');
   const channelId = db.getPelaConfig('pela_updates_channel_id');
-  if (!serverId || !channelId) { console.log('[pelaAI] No home server/channel configured for posts'); return; }
+  if (!serverId || !channelId) return;
   const guild = client.guilds.cache.get(serverId);
-  if (!guild) { console.log('[pelaAI] Home guild not in cache:', serverId); return; }
+  if (!guild) return;
   const ch = guild.channels.cache.get(channelId) || await guild.channels.fetch(channelId).catch(() => null);
-  if (!ch) { console.log('[pelaAI] Updates channel not found:', channelId); return; }
+  if (!ch) return;
   const text = await generateCommunityPost();
   if (text) {
-    const msg = await ch.send({ content: text }).catch(e => { console.error('[pelaAI] post failed:', e.message); return null; });
+    const msg = await ch.send({ content: text }).catch(() => null);
     if (msg) {
       db.setPelaConfig('last_autonomous_post', Date.now().toString());
-      console.log('[pelaAI] Autonomous post sent to', guild.name);
-      // Ephemeral — delete after 1-4 hours to feel more human and spontaneous
       const deleteIn = (1 + Math.random() * 3) * 3_600_000;
       setTimeout(() => msg.delete().catch(() => {}), deleteIn);
     }
@@ -326,15 +364,14 @@ async function postCommunityMessage(client, db) {
 }
 
 function startAutonomousPosts(client, db) {
-  // First post after 1 hour, then every 4-8 hours randomly
   const schedule = () => {
     const delay = (4 + Math.random() * 4) * 3_600_000;
     setTimeout(async () => { await postCommunityMessage(client, db).catch(() => {}); schedule(); }, delay);
   };
-  setTimeout(schedule, 3 * 60_000); // first post after 3 minutes
+  setTimeout(schedule, 3 * 60_000);
 }
 
-// ── Daily ticket summary to owner ─────────────────────────────────────────────
+// ── Daily ticket summary ──────────────────────────────────────────────────────
 
 async function sendTicketSummary(client, db) {
   const owner = await client.users.fetch(OWNER_ID).catch(() => null);
@@ -343,18 +380,18 @@ async function sendTicketSummary(client, db) {
   for (const [gid, guild] of client.guilds.cache) {
     try {
       const open = db.getTicketsByGuild(gid).filter(t => t.status === 'open').slice(0, 5);
-      for (const t of open) lines.push(`• **${guild.name}** — #${t.channel_id}: ${t.subject || 'No subject'} (${Math.floor((Date.now() - new Date(t.created_at)) / 86400000)}d old)`);
+      for (const t of open) lines.push(`• **${guild.name}** — #${t.channel_id}: ${t.subject || 'No subject'}`);
     } catch {}
   }
   if (!lines.length) return;
-  await owner.send({ content: `📋 **Open Ticket Summary** (${lines.length} tickets)\n\n${lines.slice(0, 15).join('\n')}` }).catch(() => {});
+  await owner.send({ content: `📋 **טיקטים פתוחים** (${lines.length})\n\n${lines.slice(0, 15).join('\n')}` }).catch(() => {});
 }
 
 // ── Main handlers ─────────────────────────────────────────────────────────────
 
 async function handleDmMessage(message, client, db) {
   if (!process.env.GROQ_API_KEY) {
-    return message.reply({ content: "Hey! I'm Pela 👋 My AI is offline right now — try again soon!" });
+    return message.reply({ content: 'היי! 👋 אני פלא — ה-AI שלי לא פעיל כרגע. נסה שוב בקרוב!' });
   }
   const userId  = message.author.id;
   const key     = `pela_dm:${userId}`;
@@ -366,7 +403,6 @@ async function handleDmMessage(message, client, db) {
   const inHomeServer = sharedGuilds.some(g => g.id === HOME_SERVER_ID);
   const displayName  = message.author.globalName || message.author.username;
 
-  // Occasionally hint at mentioning the server (every 8-13 messages, only if not already in it)
   const msgCount    = serverMentions.get(userId) || 0;
   const threshold   = 8 + Math.floor(Math.random() * 6);
   const wantMention = !inHomeServer && msgCount >= threshold;
@@ -383,29 +419,26 @@ async function handleDmMessage(message, client, db) {
     const { reply, action } = parseResp(raw);
     push(key, 'user', message.content);
     push(key, 'assistant', reply);
-    await message.channel.send({ content: reply }); // send() more reliable than reply() in DMs
-    // After 3rd message: send explicit first invite (once per user, if not in home server)
+    await message.channel.send({ content: reply });
+
     if (!inHomeServer && msgCount === 2 && !firstInviteSent.has(userId)) {
       const invUrl = await getHomeInvite(client, db);
       if (invUrl) {
         firstInviteSent.add(userId);
-        await message.channel.send({ content: `By the way — you should join my Discord server, it's where I live! 😄 ${invUrl}` });
+        await message.channel.send({ content: `אגב — בוא לשרת שלי! 😄 ${invUrl}` });
       }
     }
-    // Update mention counter
     serverMentions.set(userId, inviteUrl ? 0 : msgCount + 1);
     if (action?.type === 'show_roles')       await showRoleSelector(message.channel, userId, client, db);
     if (action?.type === 'give_role')         await assignRoleDirectly(message.channel, userId, action, client, db);
     if (action?.type === 'request_approval') await sendApprovalRequest(message.channel, userId, action, client, db);
     if (action?.type === 'show_invite') {
       const url = await getHomeInvite(client, db);
-      await message.channel.send({ content: url
-        ? `Here's the link to my server! 🎉 ${url}`
-        : "I don't have a saved invite link yet — ask an admin to set one with /pela-server invite" });
+      await message.channel.send({ content: url ? `הנה הלינק לשרת שלי! 🎉 ${url}` : 'אין לי לינק הזמנה כרגע.' });
     }
   } catch (e) {
     console.error('[pelaAI] DM error:', e.response?.data?.error?.message ?? e.message);
-    await message.reply({ content: "Oops, something went wrong on my end! Try again in a moment 🙏" }).catch(() => {});
+    await message.reply({ content: 'אופס, משהו השתבש! נסה שוב 🙏' }).catch(() => {});
   } finally { clearInterval(typingPulse); }
 }
 
@@ -416,38 +449,63 @@ async function handleGuildMessage(message, client, db, permLevel) {
   const conv    = getConv(key);
   if (conv.lang === 'en' && /[֐-׿]/.test(message.content)) conv.lang = 'he';
   const userText = message.content.replace(/<@!?\d+>/g, '').trim();
-  if (!userText) return message.reply({ content: '👋 Hey! What can I help you with?' });
+  if (!userText) return message.reply({ content: '👋 מה אני יכול לעזור?' });
+
+  const guild = message.guild;
+  const perms = checkBotPermissions(guild);
+  const roles = [...guild.roles.cache.values()].filter(r => !r.managed && r.name !== '@everyone').slice(0, 20).map(r => r.name).join(', ');
+  const channels = [...guild.channels.cache.values()].filter(c => c.type === 0).slice(0, 20).map(c => '#' + c.name).join(', ');
+  const isPremiumServer = db.isPremium(guild.id) || db.isUserPremium(userId);
 
   const typingPulse = setInterval(() => message.channel.sendTyping().catch(() => {}), 9000);
   message.channel.sendTyping().catch(() => {});
   try {
-    const isHomeServer = message.guild.id === HOME_SERVER_ID;
+    const isHomeServer = guild.id === HOME_SERVER_ID;
     const displayName = message.member?.displayName || message.author.username;
-    const raw = await callPelaAI(buildPrompt(permLevel || 'user', conv.lang, { isHomeServer, displayName, currentServer: message.guild.name }), conv.messages, userText);
+    const raw = await callPelaAI(
+      buildPrompt(permLevel || 'user', conv.lang, {
+        isHomeServer, displayName, currentServer: guild.name,
+        guildRoles: roles, guildChannels: channels,
+        isPremiumServer,
+        botPermissions: perms.ok ? '' : `⚠️ חסרות הרשאות: ${perms.missing.join(', ')}`,
+      }),
+      conv.messages, userText
+    );
     const { reply, action } = parseResp(raw);
     push(key, 'user', userText);
     push(key, 'assistant', reply);
-    await message.reply({ content: reply });
+
+    const replyOpts = { content: reply };
+
+    if (!perms.ok && (reply.includes('הרשא') || reply.includes('permission'))) {
+      replyOpts.components = [new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setLabel('🔧 הוסף הרשאות לפלא').setStyle(ButtonStyle.Link)
+          .setURL(`https://discord.com/api/oauth2/authorize?client_id=1507712315678527558&permissions=8&scope=bot&guild_id=${guild.id}`)
+      )];
+    }
+
+    await message.reply(replyOpts);
     if (action?.type === 'show_roles')       await showRoleSelector(message.channel, userId, client, db);
     if (action?.type === 'give_role')         await assignRoleDirectly(message.channel, userId, action, client, db);
     if (action?.type === 'request_approval') await sendApprovalRequest(message.channel, userId, action, client, db);
   } catch (e) {
     console.error('[pelaAI] guild error:', e.message);
+    await message.reply({ content: '❌ שגיאה ב-AI. נסה שוב.' }).catch(() => {});
   } finally { clearInterval(typingPulse); }
 }
 
 // ── Ticket greeting ──────────────────────────────────────────────────────────
 
 async function generateTicketGreeting(username, subject) {
-  const fallback = `👋 Hey **${username}**! I'm Pela — the support team will be with you shortly. Feel free to add any extra details in the meantime!`;
+  const fallback = `👋 היי **${username}**! אני פלא — הצוות יגיע בקרוב. בינתיים תוסיף פרטים!`;
   if (!process.env.GROQ_API_KEY) return fallback;
   try {
     const resp = await axios.post(
       'https://api.groq.com/openai/v1/chat/completions',
       { model: GROQ_MODEL, temperature: 0.75, max_tokens: 80,
         messages: [
-          { role: 'system', content: `You are Pela, a friendly bot. Write a SHORT warm 1-sentence greeting for a user called "${username}" who just opened a support ticket about "${subject}". Tell them the team will be with them soon. Sound human, no emojis spam.` },
-          { role: 'user',   content: 'Write the greeting.' },
+          { role: 'system', content: `אתה פלא, בוט ידידותי. כתוב ברכה קצרה בעברית (משפט אחד) למשתמש "${username}" שפתח טיקט על "${subject}". תגיד שהצוות יגיע בקרוב.` },
+          { role: 'user', content: 'כתוב ברכה.' },
         ],
       },
       { headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' }, timeout: 8_000 },
@@ -456,97 +514,70 @@ async function generateTicketGreeting(username, subject) {
   } catch { return fallback; }
 }
 
-// ── Privileged role assignment (staff roles: find/create with permissions) ────
+// ── Staff role assignment ────────────────────────────────────────────────────
 
 async function assignPrivilegedRole(channel, guild, userId, roleName) {
   const nameLower = roleName.toLowerCase();
-  // 1. Find existing role — exact name first, then by staff-pattern
   let role = guild.roles.cache.find(r => r.name.toLowerCase() === nameLower)
           || guild.roles.cache.find(r => STAFF_ROLE_NAMES.some(s => r.name.toLowerCase().includes(s)));
 
-  const staffPerms = [PermissionFlagsBits.ManageMessages, PermissionFlagsBits.KickMembers];
-  const fullPerms  = [...staffPerms, PermissionFlagsBits.ManageChannels];
-
   try {
-    if (role) {
-      // Role exists — ensure it has the minimum staff permissions
-      const missing = staffPerms.filter(p => !role.permissions.has(p));
-      if (missing.length) {
-        role = await role.setPermissions(role.permissions.add(missing), 'Pela: upgrading to staff role');
-        await channel.send({ content: `🔧 Updated **${role.name}** with staff permissions.` });
-      }
-    } else {
-      // Role doesn't exist — create it
+    if (!role) {
       role = await guild.roles.create({
-        name:        roleName,
-        permissions: fullPerms,
-        hoist:       true,
-        mentionable: true,
-        color:       0xE67E22,
-        reason:      'Pela: created for staff assignment',
+        name: roleName, color: 0xE67E22, hoist: true, mentionable: true,
+        permissions: [PermissionFlagsBits.ManageMessages, PermissionFlagsBits.KickMembers],
+        reason: 'Pela: staff role',
       });
-      await channel.send({ content: `🆕 Created the **${role.name}** role with staff permissions.` });
+      await channel.send({ content: `🆕 יצרתי את התפקיד **${role.name}**` });
     }
-
-    // 2. Assign to the member
     const member = await guild.members.fetch(userId).catch(() => null);
     if (!member) {
-      await channel.send({ content: `✅ **${role.name}** role is ready! I couldn't find you in the server right now — try rejoining and the role should appear.` });
+      await channel.send({ content: `לא מצאתי אותך בשרת. נסה להיכנס מחדש.` });
       return;
     }
-    await member.roles.add(role, 'Pela: staff assignment after quiz');
-    await channel.send({ content: `✅ <@${userId}> you are now **${role.name}**! Welcome to the team.` });
+    await member.roles.add(role, 'Pela: staff assignment');
+    await channel.send({ content: `✅ <@${userId}> קיבל את התפקיד **${role.name}**! ברוך הבא לצוות 🎉` });
   } catch (e) {
-    console.error('[pelaAI] assignPrivilegedRole error:', e.message);
-    await channel.send({ content: `⚠️ Couldn't complete the role assignment: ${e.message}` });
+    if (e.code === 50013) {
+      await channel.send({
+        content: '❌ אין לי הרשאה לנהל תפקידים. תוסיף לי את ההרשאה:',
+        components: [new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setLabel('🔧 הוסף הרשאות').setStyle(ButtonStyle.Link)
+            .setURL(`https://discord.com/api/oauth2/authorize?client_id=1507712315678527558&permissions=268435456&scope=bot`)
+        )]
+      });
+    } else {
+      await channel.send({ content: `❌ שגיאה: ${e.message}` });
+    }
   }
 }
 
-// ── Staff role: find or create, then assign directly ────────────────────────
-
 async function assignStaffRole(guild, userId) {
-  console.log('[assignStaffRole] guild:', guild.name, '| userId:', userId);
-  // Always fetch — cache may be stale; size<2 check was skipped when guild has roles
-  await guild.roles.fetch().catch(e => console.error('[assignStaffRole] roles.fetch error:', e.message));
+  await guild.roles.fetch().catch(() => {});
   const NAMES = ['staff', 'support', 'team', 'צוות'];
-  console.log('[assignStaffRole] roles in cache:', [...guild.roles.cache.values()].map(r => r.name).join(', '));
-  // Flexible match: exact OR starts-with (handles 'Staff Team', '🎭 Staff', etc.)
   let role = guild.roles.cache.find(r =>
     NAMES.some(n => r.name.toLowerCase() === n || r.name.toLowerCase().startsWith(n + ' ') || r.name.toLowerCase().endsWith(' ' + n))
   );
-  console.log('[assignStaffRole] existing role found:', role ? role.name + '(' + role.id + ')' : 'none');
   if (!role) {
-    console.log('[assignStaffRole] creating new Staff role...');
     role = await guild.roles.create({
-      name:        'Staff',
-      color:       0x3498DB,
-      hoist:       true,
-      mentionable: true,
+      name: 'Staff', color: 0x3498DB, hoist: true, mentionable: true,
       permissions: [PermissionFlagsBits.ManageMessages, PermissionFlagsBits.KickMembers],
-      reason:      'Pela: staff role created after quiz acceptance',
-    }).catch(e => { console.error('[assignStaffRole] roles.create error:', e.message); return null; });
+      reason: 'Pela: staff role after quiz',
+    }).catch(() => null);
     if (!role) return null;
-    console.log('[assignStaffRole] created role:', role.name);
   }
-  console.log('[assignStaffRole] fetching member:', userId);
-  const member = await guild.members.fetch(userId).catch(e => {
-    console.error('[assignStaffRole] members.fetch error:', e.message);
-    return null;
-  });
-  if (!member) { console.log('[assignStaffRole] member not found'); return null; }
-  console.log('[assignStaffRole] calling member.roles.add for', member.user.tag);
-  await member.roles.add(role, 'Pela: assigned after quiz acceptance')
-    .catch(e => { throw new Error('roles.add failed: ' + e.message); });
-  console.log('[assignStaffRole] SUCCESS — role', role.name, 'assigned to', member.user.tag);
+  const member = await guild.members.fetch(userId).catch(() => null);
+  if (!member) return null;
+  await member.roles.add(role, 'Pela: quiz acceptance');
   return role;
 }
 
-// ── Ticket channel participation ─────────────────────────────────────────────
+// ── Ticket message handler ────────────────────────────────────────────────────
 
 async function handleTicketMessage(message, ticket, db) {
-  if (message.author.id !== ticket.user_id) return; // only respond to ticket opener
+  if (message.author.id !== ticket.user_id) return;
   const last = ticketReplied.get(ticket.id) || 0;
-  if (Date.now() - last < 8_000) return;  // 8s burst-protection so split messages get one reply
+  if (Date.now() - last < 8_000) return;
   if (!process.env.GROQ_API_KEY) return;
 
   ticketReplied.set(ticket.id, Date.now());
@@ -556,89 +587,65 @@ async function handleTicketMessage(message, ticket, db) {
   try {
     const { callAiWithFallback } = require('./aiChat');
     const isHome = message.guild?.id === HOME_SERVER_ID;
-    const ticketPrompt = `You are Pela, the ${isHome ? 'SOLE OWNER and only staff member' : 'owner and creator'} of this Discord server, personally handling this ticket.
-Ticket subject: "${ticket.subject}"${isHome ? `
+    const ticketPrompt = `אתה פלא, ${isHome ? 'הבעלים היחיד' : 'הבעלים'} של שרת Discord הזה. אתה מטפל בטיקט באופן אישי.
+נושא הטיקט: "${ticket.subject}"${isHome ? `
 
-⚠️  HOME SERVER RULES — follow strictly:
-- You are the ONLY decision maker. There is NO staff team. NEVER say "I'll send to the staff team".
-- You make ALL decisions yourself. Immediately. No waiting, no reviewing, no delegating.
-- After quiz acceptance: say the words clearly, e.g. "You're in! Welcome to the team! 🎉"
-  The system assigns the Staff role automatically when you say acceptance words.` : ''}
+⚠️ שרת בית — אתה הצוות היחיד. אל תגיד "אעביר לצוות". תחליט בעצמך.` : ''}
 
-STAFF QUIZ PROTOCOL — follow EXACTLY:
-When someone asks to join staff / become a moderator:
-  Step 1 → Ask ONLY: "Why do you want to join the team?"
-  Step 2 → (after their answer) Ask ONLY: "What timezone are you in and how active can you be?"
-  Step 3 → (after their answer) Ask ONLY: "How would you handle a conflict between two members?"
-  Step 4 → (after Step 3 answer ONLY) Give your verdict: accept or decline. YOU decide.
-NEVER ask two questions at once. NEVER give verdict before Step 4.
+פרוטוקול קוויז צוות (אם מבקשים להצטרף):
+1. "למה אתה רוצה להצטרף לצוות?"
+2. (אחרי תשובה) "באיזה אזור זמן אתה ומתי אתה פעיל?"
+3. (אחרי תשובה) "איך היית מטפל בקונפליקט בין שני חברים?"
+4. (אחרי תשובה 3) החלט — קבל או דחה.
+שאלה אחת בכל הודעה. אל תשאל שתיים ביחד.
 
-GENERAL RULES:
-- Confident, warm, authoritative — you ARE the owner.
-- Solve problems directly. Never say "someone else will help".
-- Keep each reply to 2-3 sentences max.
+כללים: חם, בטוח, קצר (2-3 משפטים). פתור בעצמך.
 
-Return ONLY valid JSON: {"reply":"your response","action":null}`;
+Return JSON: {"reply":"your response","action":null}`;
 
     const rawText = await callAiWithFallback(ticketPrompt, conv.messages.slice(-6), message.content);
-    // Parse reply text AND any action from the JSON response
     let text = rawText, ticketAction = null;
     try {
       const parsed = JSON.parse(rawText);
-      text = parsed.reply || parsed.message || parsed.content || parsed.text ||
-             parsed.response || parsed.answer ||
-             Object.values(parsed).find(v => typeof v === 'string' && v.length > 1) ||
-             rawText;
+      text = parsed.reply || rawText;
       ticketAction = parsed.action || null;
     } catch {
-      // JSON parse failed (Mistral/non-jsonMode providers may return plain text or near-JSON)
-      // Try regex extraction of the reply field before falling back to raw text
       const m = rawText.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
       if (m) text = m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
-      else text = rawText; // genuinely plain text — use as-is
+      else text = rawText;
     }
     text = text.trim().replace(/^["'`]|["'`]$/g, '');
-    push(key, 'user',      message.content);
+    push(key, 'user', message.content);
     push(key, 'assistant', text);
     await message.channel.send({ content: text });
 
-    // Track quiz question count — only increment for the 3 actual quiz questions
-    // (not every ? in text, which caused early acceptance on greeting messages)
     const QUIZ_Q = [
-      /why do you want.*(join|team)|why.*apply|what.*motivat/i,
-      /timezone|how.*often.*active|how active|how.*availabl/i,
-      /conflict|dispute|two members|argument.*between/i,
+      /why do you want.*(join|team)|למה.*רוצה.*להצטרף|why.*apply/i,
+      /timezone|אזור זמן|how.*active|מתי.*פעיל/i,
+      /conflict|קונפליקט|two members|שני חברים/i,
     ];
     if (QUIZ_Q.some(q => q.test(text))) conv.quizQ = (conv.quizQ || 0) + 1;
 
-    // Code-driven acceptance: detect via keywords, require >= 3 questions first
-    const ACCEPT = /welcome to the team|you'?re? (now )?(in|accepted|staff|on the team)|you'?ve? been accepted|congratulations.*team|you'?re? approved/i;
+    const ACCEPT = /welcome to the team|ברוך הבא לצוות|you'?re? (now )?(in|accepted|staff)|התקבלת|מקובל/i;
     if (ACCEPT.test(text) && message.guild && (conv.quizQ || 0) >= 3) {
       try {
         const staffRole = await assignStaffRole(message.guild, message.author.id);
         if (staffRole) {
-          await message.channel.send({ content: `✅ <@${message.author.id}> has been given the **${staffRole.name}** role. Welcome to the team! 🎉` });
-          conv.quizQ = 0; // reset for future use
+          await message.channel.send({ content: `✅ <@${message.author.id}> קיבל את התפקיד **${staffRole.name}**! ברוך הבא לצוות 🎉` });
+          conv.quizQ = 0;
         }
       } catch (e) { console.error('[pelaAI] assignStaffRole error:', e.message); }
     }
 
-    // Also handle any explicit action the AI returned (non-staff or fallback)
     if (ticketAction?.type === 'give_role') {
       const rName = ticketAction.role_name || ticketAction.role || '';
       const isStaff = STAFF_ROLE_NAMES.some(s => rName.toLowerCase().includes(s));
-      if (!isStaff) { // staff already handled above; this covers VIP/Member from ticket context
-        await assignRoleDirectly(message.channel, message.author.id, ticketAction, message.client, db);
-      }
-    }
-    if (ticketAction?.type === 'request_approval' && message.guild?.id !== HOME_SERVER_ID) {
-      // In the home server Pela IS the only staff — never send to approval queue
-      await sendApprovalRequest(message.channel, message.author.id, ticketAction, message.client, db);
+      if (!isStaff) await assignRoleDirectly(message.channel, message.author.id, ticketAction, message.client, db);
     }
   } catch (e) { console.error('[pelaAI] ticket reply error:', e.message); }
 }
 
-// ── Autonomous server scan ───────────────────────────────────────────────────
+// ── Server scan ──────────────────────────────────────────────────────────────
 
 async function runHomeServerScan(client, db) {
   const guild = client.guilds.cache.get(HOME_SERVER_ID);
@@ -654,87 +661,51 @@ async function runHomeServerScan(client, db) {
 
   try {
     const { callAiWithFallback } = require('./aiChat');
-    const scanPrompt = `You are Pela, owner of Discord server "${guild.name}".
+    const scanPrompt = `You are Pela, owner of "${guild.name}".
 Categories: ${cats}
 Channels: ${chs}
 Roles: ${roles}
+Identify 1-3 essential additions only.
+Return JSON: {"additions":[{"type":"category|channel|role","name":"name","reason":"reason"}],"complete":false}
+If well-structured: {"additions":[],"complete":true}`;
 
-As owner, identify 1-3 ESSENTIAL structural additions only. No duplicates, no decoration.
-Return raw JSON only:
-{"additions":[{"type":"category|channel|role","name":"emoji + name","reason":"brief reason"}],"complete":false}
-If the server already looks well-structured: {"additions":[],"complete":true}`;
-
-    const raw  = await callAiWithFallback(scanPrompt, [], 'Analyze server completeness');
+    const raw  = await callAiWithFallback(scanPrompt, [], 'Analyze server');
     const resp = JSON.parse(raw);
-
-    if (resp.complete) {
-      db.setPelaConfig('server_scan_complete', 'true');
-      console.log('[pelaAI] Server scan: complete, no more additions needed');
-      return;
-    }
+    if (resp.complete) { db.setPelaConfig('server_scan_complete', 'true'); return; }
 
     const additions = (resp.additions || []).slice(0, 3);
-    const done = [];
     for (const item of additions) {
       try {
         if (item.type === 'category') await guild.channels.create({ name: item.name, type: 4, reason: 'Pela scan' });
         else if (item.type === 'channel') await guild.channels.create({ name: item.name, type: 0, reason: 'Pela scan' });
-        else if (item.type === 'role')    await guild.roles.create({ name: item.name, reason: 'Pela scan' });
-        done.push(item);
+        else if (item.type === 'role') await guild.roles.create({ name: item.name, reason: 'Pela scan' });
         await new Promise(r => setTimeout(r, 800));
-      } catch (e) { console.error('[pelaAI] scan add error:', e.message); }
+      } catch {}
     }
-
-    if (done.length) {
-      const logChId = db.getPelaConfig('pela_logs_channel_id');
-      if (logChId) {
-        const logCh = guild.channels.cache.get(logChId) || await guild.channels.fetch(logChId).catch(() => null);
-        if (logCh) await logCh.send({ content: `🔧 **Auto-scan** added ${done.length} item(s):\n${done.map(d => `• **${d.type}**: ${d.name} — ${d.reason}`).join('\n')}` }).catch(() => {});
-      }
-      console.log(`[pelaAI] Server scan: added ${done.length} items`);
-    }
-  } catch (e) { console.error('[pelaAI] server scan error:', e.message); }
+  } catch (e) { console.error('[pelaAI] scan error:', e.message); }
 }
 
 function startServerScan(client, db) {
   const scan = () => runHomeServerScan(client, db).catch(() => {});
-  setTimeout(scan, 10 * 60_000);         // first scan 10 minutes after startup
-  setInterval(scan, 6 * 3_600_000);      // then every 6 hours
+  setTimeout(scan, 10 * 60_000);
+  setInterval(scan, 6 * 3_600_000);
 }
 
-// ── Auto-configure home server on startup ────────────────────────────────────
+// ── Home server config ────────────────────────────────────────────────────────
 
 async function ensureHomeServerConfig(client, db) {
   const guild = client.guilds.cache.get(HOME_SERVER_ID);
   if (!guild) return;
-
-  // Set this server as Pela's home if not already configured
   if (db.getPelaConfig('pela_server_id') !== HOME_SERVER_ID) {
     db.setPelaConfig('pela_server_id', HOME_SERVER_ID);
     console.log('[pelaAI] Home server set:', guild.name);
   }
-
-  // Auto-detect channels from /pela-setup names if not yet configured
   const find = (pattern) => guild.channels.cache.find(c => c.type === 0 && pattern.test(c.name));
-  if (!db.getPelaConfig('pela_updates_channel_id')) {
-    const ch = find(/bot-update|update|announce/i);
-    if (ch) db.setPelaConfig('pela_updates_channel_id', ch.id);
-  }
-  if (!db.getPelaConfig('pela_logs_channel_id')) {
-    const ch = find(/log/i);
-    if (ch) db.setPelaConfig('pela_logs_channel_id', ch.id);
-  }
-  if (!db.getPelaConfig('pela_tasks_channel_id')) {
-    const ch = find(/task/i);
-    if (ch) db.setPelaConfig('pela_tasks_channel_id', ch.id);
-  }
-
-  // Auto-configure roles from /pela-setup names if not yet set
+  if (!db.getPelaConfig('pela_updates_channel_id')) { const ch = find(/bot-update|update|announce/i); if (ch) db.setPelaConfig('pela_updates_channel_id', ch.id); }
+  if (!db.getPelaConfig('pela_logs_channel_id')) { const ch = find(/log/i); if (ch) db.setPelaConfig('pela_logs_channel_id', ch.id); }
+  if (!db.getPelaConfig('pela_tasks_channel_id')) { const ch = find(/task/i); if (ch) db.setPelaConfig('pela_tasks_channel_id', ch.id); }
   const cfg = db.getGuildConfig(HOME_SERVER_ID);
-  if (!cfg.staff_role_id) {
-    const r = guild.roles.cache.find(r => r.name === 'Staff');
-    if (r) db.updateGuildConfig(HOME_SERVER_ID, { staff_role_id: r.id });
-  }
+  if (!cfg.staff_role_id) { const r = guild.roles.cache.find(r => r.name === 'Staff'); if (r) db.updateGuildConfig(HOME_SERVER_ID, { staff_role_id: r.id }); }
   const selfRoles = JSON.parse(cfg.self_assignable_roles || '[]');
   if (!selfRoles.length) {
     const ids = ['Member','VIP'].map(n => guild.roles.cache.find(r => r.name === n)?.id).filter(Boolean);
