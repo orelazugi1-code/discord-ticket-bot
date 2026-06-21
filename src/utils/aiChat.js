@@ -689,6 +689,7 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
 // ── Reply helper ──────────────────────────────────────────────────────────────
 
 async function sendReply(message, text) {
+  if (!text || !text.trim()) return message.reply({ content: '👋' });
   if (text.length <= 1990) return message.reply({ content: text });
   const lines = text.split('\n');
   let chunk = '', first = true;

@@ -475,7 +475,8 @@ async function handleGuildMessage(message, client, db, permLevel) {
     push(key, 'user', userText);
     push(key, 'assistant', reply);
 
-    const replyOpts = { content: reply };
+    const safeReply = reply && reply.trim() ? reply : '👋';
+    const replyOpts = { content: safeReply };
 
     if (!perms.ok && (reply.includes('הרשא') || reply.includes('permission'))) {
       replyOpts.components = [new ActionRowBuilder().addComponents(
