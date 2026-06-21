@@ -194,6 +194,8 @@ Roles:
 Tickets (multi-category: use setup_ticket once, then add_ticket_category for each type):
   {"type":"setup_ticket","channel":"name","support_roles":["Role1"],"title":"🎫 Support","message":"Click to open","questions":["optional global Q"]}
   {"type":"add_ticket_category","name":"🐛 Bug Report","questions":["Q1","Q2"]}
+  {"type":"clear_ticket_questions"} — removes ALL questions from tickets (no questions asked when opening)
+  {"type":"set_ticket_questions","questions":["Q1","Q2"]} — replace ticket questions
 
 Forms:
   {"type":"setup_form","channel":"name","log_channel":"log or null","title":"Title","description":"Desc","button_label":"Apply","questions":["Q1"],"mode":"modal"}
@@ -211,15 +213,19 @@ ${ownerSection}
 
 ━━━━ RULES ━━━━
 1. Respond in the SAME LANGUAGE as the admin (Hebrew → Hebrew, English → English).
-2. Keep "reply" SHORT — but for organize/cleanup requests, list the full plan first.
-3. Channel/category names include a thematic emoji unless they already exist in the list.
-4. Use EXACT names from the server state for existing channels/roles/categories.
-5. Delete actions automatically require button confirmation — include them when appropriate.
-6. Return ONLY valid JSON — nothing outside the JSON object.
-7. Prefer start_ticket_wizard over setup_ticket — it guides the admin step by step with Discord UI.
-8. Prefer start_form_wizard over setup_form — same reason.
-9. NEVER say "I'm checking" or "I'll analyze" and then put actions in the same response. Check = reply only, act = next message.
-10. When organizing: MOVE first, DELETE only duplicates, CREATE categories for orphans. Organizing ≠ deleting everything.`;
+2. When the user asks a QUESTION or says "explain"/"why"/"תסביר"/"למה" → ANSWER IN TEXT in "reply". Do NOT take actions. Just explain clearly in 2-5 sentences.
+3. When the user asks to DO something → keep "reply" short, put work in "actions".
+4. Channel/category names include a thematic emoji unless they already exist in the list.
+5. Use EXACT names from the server state for existing channels/roles/categories.
+6. Delete actions automatically require button confirmation — include them when appropriate.
+7. Return ONLY valid JSON — nothing outside the JSON object.
+8. Prefer start_ticket_wizard over setup_ticket — it guides the admin step by step with Discord UI.
+9. Prefer start_form_wizard over setup_form — same reason.
+10. NEVER say "I'm checking" or "I'll analyze" and then put actions. Check = reply only, act = next message.
+11. When organizing: MOVE first, DELETE only duplicates, CREATE categories for orphans.
+12. If the user says "don't do anything"/"אל תעשה כלום"/"stop" → empty actions, just acknowledge.
+13. NEVER repeat the same failed action. Try a different approach or explain what went wrong.
+14. If you already did something and the user complains it didn't work → EXPLAIN what happened and suggest a fix, don't just redo the same thing.`;
 }
 
 // ── Groq ──────────────────────────────────────────────────────────────────────
@@ -693,6 +699,21 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
             }
           } catch (err) { console.error('[add_ticket_category]', err.message); }
           done.push(`Added ticket category **${act.name}**`);
+          break;
+        }
+
+        case 'clear_ticket_questions': {
+          db.setTicketQuestions(guild.id, []);
+          const allCats = db.getTicketCategories(guild.id);
+          for (const cat of allCats) db.setCategoryQuestions(guild.id, cat.id, []);
+          done.push('הסרתי את כל השאלות ממערכת הטיקטים');
+          break;
+        }
+
+        case 'set_ticket_questions': {
+          const qs = (act.questions || []).slice(0, 5).map(String);
+          db.setTicketQuestions(guild.id, qs);
+          done.push(`עדכנתי שאלות טיקט: ${qs.length} שאלות`);
           break;
         }
 
