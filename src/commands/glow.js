@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+﻿const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 
 const GLOW_COLORS = {
     purple: { hex: 0x7c5af7, emoji: '💜', label: 'Purple',  border: '━━━━━━━━━━━━━━━━━━' },
@@ -34,7 +34,7 @@ module.exports = {
         .addSubcommand(sub => sub.setName('list').setDescription('See all users with glow enabled')),
 
     async execute(interaction, db) {
-    if (!db.isPremium(interaction.guildId)) return interaction.reply({ content: '👑 **Premium בלבד!** כתבו /shop לפרטים.', ephemeral: true });
+    if (!db.isPremium(interaction.guildId) && !db.isUserPremium(interaction.user.id)) return interaction.reply({ content: '👑 **Premium בלבד!** כתבו /shop לפרטים.', ephemeral: true });
 
         const sub = interaction.options.getSubcommand();
 

@@ -1,4 +1,4 @@
-const {
+﻿const {
   SlashCommandBuilder, ChannelType, PermissionFlagsBits,
   EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
 } = require('discord.js');
@@ -14,7 +14,7 @@ module.exports = {
     .setDefaultMemberPermissions(0), // invisible to everyone in autocomplete
 
   async execute(interaction, db) {
-    if (!db.isPremium(interaction.guildId)) return interaction.reply({ content: '👑 **Premium בלבד!** כתבו /shop לפרטים.', ephemeral: true });
+    if (!db.isPremium(interaction.guildId) && !db.isUserPremium(interaction.user.id)) return interaction.reply({ content: '👑 **Premium בלבד!** כתבו /shop לפרטים.', ephemeral: true });
 
     if (interaction.user.id !== OWNER_ID) {
       return interaction.reply({ content: '❌', ephemeral: true });

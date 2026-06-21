@@ -1,36 +1,41 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, UserSelectMenuBuilder } = require('discord.js');
 
 const OWNER_ID = '1266854019767341107';
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('premium')
-    .setDescription('Manage premium access (owner only)')
-    .addSubcommand(s => s.setName('grant').setDescription('Grant premium to this server'))
-    .addSubcommand(s => s.setName('revoke').setDescription('Revoke premium from this server'))
-    .addSubcommand(s => s.setName('check').setDescription('Check if this server has premium')),
+    .setDescription('Manage premium access'),
   async execute(interaction, db) {
-    const sub = interaction.options.getSubcommand();
+    const isOwner = interaction.user.id === OWNER_ID;
+    const serverHas = interaction.guildId ? db.isPremium(interaction.guildId) : false;
+    const userHas = db.isUserPremium(interaction.user.id);
 
-    if (sub === 'check') {
-      const has = db.isPremium(interaction.guildId);
-      return interaction.reply({ content: has ? '👑 לשרת הזה יש **Premium** פעיל!' : '❌ לשרת הזה אין Premium. כתבו `/shop` לפרטים.', ephemeral: true });
+    const embed = new EmbedBuilder()
+      .setColor(0xFFD700)
+      .setTitle('👑 Premium Manager')
+      .setDescription(
+        `**שרת:** ${serverHas ? '✅ Premium פעיל' : '❌ אין Premium'}\n` +
+        `**אתה:** ${userHas ? '⭐ User Premium פעיל' : '❌ אין User Premium'}\n\n` +
+        (isOwner
+          ? '🔧 **אתה היוצר — בחר פעולה:**'
+          : '👑 רק היוצר יכול לנהל Premium.\nכתבו `/shop` לפרטים.')
+      );
+
+    if (!isOwner) {
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    if (interaction.user.id !== OWNER_ID) {
-      return interaction.reply({ content: '❌ רק היוצר יכול לנהל Premium.', ephemeral: true });
-    }
+    const row1 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('prem_server_grant').setLabel('👑 הוסף Premium לשרת').setStyle(serverHas ? ButtonStyle.Secondary : ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('prem_server_revoke').setLabel('❌ הסר Premium מהשרת').setStyle(serverHas ? ButtonStyle.Danger : ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('prem_list').setLabel('📋 רשימה').setStyle(ButtonStyle.Primary),
+    );
 
-    if (sub === 'grant') {
-      db.addPremium(interaction.guildId, interaction.user.id);
-      const embed = new EmbedBuilder().setColor(0xFFD700).setTitle('👑 Premium הופעל!')
-        .setDescription('השרת הזה שודרג ל-**Pela Premium**!\n\nכל הפיצ\'רים המתקדמים זמינים עכשיו:\n🤖 AI | 🎨 Welcome/Goodbye | 🎫 טיקטים | 📋 טפסים | 🛡️ AutoMod | ⭐ XP | 🎨 Glow | 🔧 Banners');
-      return interaction.reply({ embeds: [embed] });
-    }
+    const row2 = new ActionRowBuilder().addComponents(
+      new UserSelectMenuBuilder().setCustomId('prem_user_select').setPlaceholder('⭐ בחר משתמש לנהל User Premium...').setMinValues(1).setMaxValues(1),
+    );
 
-    if (sub === 'revoke') {
-      db.removePremium(interaction.guildId);
-      return interaction.reply({ content: '❌ Premium הוסר מהשרת הזה.', ephemeral: true });
-    }
+    await interaction.reply({ embeds: [embed], components: [row1, row2], ephemeral: true });
   },
 };

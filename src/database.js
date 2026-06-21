@@ -237,6 +237,12 @@ db.exec(`
     user_id      TEXT PRIMARY KEY,
     subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS premium_users (
+    user_id     TEXT PRIMARY KEY,
+    granted_by  TEXT,
+    granted_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // ── Migrations ────────────────────────────────────────────────────────────────
@@ -392,6 +398,11 @@ const stmts = {
   isPremium: (gid) => !!db.prepare('SELECT 1 FROM premium_servers WHERE guild_id = ?').get(gid),
   addPremium: (gid, by) => db.prepare('INSERT OR IGNORE INTO premium_servers (guild_id, granted_by) VALUES (?, ?)').run(gid, by),
   removePremium: (gid) => db.prepare('DELETE FROM premium_servers WHERE guild_id = ?').run(gid),
+  isUserPremium: (uid) => !!db.prepare('SELECT 1 FROM premium_users WHERE user_id = ?').get(uid),
+  addUserPremium: (uid, by) => db.prepare('INSERT OR IGNORE INTO premium_users (user_id, granted_by) VALUES (?, ?)').run(uid, by),
+  removeUserPremium: (uid) => db.prepare('DELETE FROM premium_users WHERE user_id = ?').run(uid),
+  getAllPremiumUsers: () => db.prepare('SELECT * FROM premium_users ORDER BY granted_at DESC').all(),
+  getAllPremiumServers: () => db.prepare('SELECT * FROM premium_servers ORDER BY granted_at DESC').all(),
   getUserControl:    (gid, uid)      => db.prepare('SELECT * FROM user_controls WHERE guild_id=? AND user_id=?').get(gid, uid),
 };
 

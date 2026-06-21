@@ -22,6 +22,7 @@ const client = new Client({
 });
 
 try { db.exec("CREATE TABLE IF NOT EXISTS premium_servers (guild_id TEXT PRIMARY KEY, granted_by TEXT, granted_at DATETIME DEFAULT CURRENT_TIMESTAMP)"); } catch {}
+try { db.exec("CREATE TABLE IF NOT EXISTS premium_users (user_id TEXT PRIMARY KEY, granted_by TEXT, granted_at DATETIME DEFAULT CURRENT_TIMESTAMP)"); } catch {}
 
 // ── In-memory trackers ────────────────────────────────────────────────────────
 
@@ -258,7 +259,63 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
-    
+    // ── Premium management buttons ──────────────────────────────────────
+    if (interaction.isButton() && interaction.customId === 'prem_server_grant') {
+      if (interaction.user.id !== '1266854019767341107') return interaction.reply({ content: '❌ רק היוצר.', ephemeral: true });
+      db.addPremium(interaction.guildId, interaction.user.id);
+      await interaction.update({ content: '👑 **Premium הופעל לשרת הזה!**\nכל הפקודות המתקדמות זמינות עכשיו.', embeds: [], components: [] });
+      return;
+    }
+    if (interaction.isButton() && interaction.customId === 'prem_server_revoke') {
+      if (interaction.user.id !== '1266854019767341107') return interaction.reply({ content: '❌ רק היוצר.', ephemeral: true });
+      db.removePremium(interaction.guildId);
+      await interaction.update({ content: '❌ **Premium הוסר מהשרת הזה.**', embeds: [], components: [] });
+      return;
+    }
+    if (interaction.isButton() && interaction.customId === 'prem_list') {
+      if (interaction.user.id !== '1266854019767341107') return interaction.reply({ content: '❌ רק היוצר.', ephemeral: true });
+      const servers = db.getAllPremiumServers();
+      const users = db.getAllPremiumUsers();
+      let desc = '**👑 שרתים עם Premium:**\n';
+      if (!servers.length) desc += 'אין\n';
+      else for (const s of servers) { const g = interaction.client.guilds.cache.get(s.guild_id); desc += `• ${g ? g.name : s.guild_id}\n`; }
+      desc += '\n**⭐ משתמשים עם Premium:**\n';
+      if (!users.length) desc += 'אין\n';
+      else for (const u of users) { try { const usr = await interaction.client.users.fetch(u.user_id).catch(() => null); desc += `• ${usr ? usr.tag : u.user_id}\n`; } catch { desc += `• ${u.user_id}\n`; } }
+      const { EmbedBuilder } = require('discord.js');
+      await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xFFD700).setTitle('📋 רשימת Premium').setDescription(desc)], ephemeral: true });
+      return;
+    }
+    if (interaction.isUserSelectMenu() && interaction.customId === 'prem_user_select') {
+      if (interaction.user.id !== '1266854019767341107') return interaction.reply({ content: '❌ רק היוצר.', ephemeral: true });
+      const target = interaction.users.first();
+      const has = db.isUserPremium(target.id);
+      const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`prem_ugrant_${target.id}`).setLabel(`⭐ תן Premium ל-${target.displayName}`).setStyle(has ? ButtonStyle.Secondary : ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`prem_urevoke_${target.id}`).setLabel(`❌ הסר Premium מ-${target.displayName}`).setStyle(has ? ButtonStyle.Danger : ButtonStyle.Secondary),
+      );
+      await interaction.reply({ content: `**${target.displayName}** — ${has ? '⭐ יש User Premium' : '❌ אין User Premium'}`, components: [row], ephemeral: true });
+      return;
+    }
+    if (interaction.isButton() && interaction.customId.startsWith('prem_ugrant_')) {
+      if (interaction.user.id !== '1266854019767341107') return interaction.reply({ content: '❌ רק היוצר.', ephemeral: true });
+      const uid = interaction.customId.replace('prem_ugrant_', '');
+      db.addUserPremium(uid, interaction.user.id);
+      const target = await interaction.client.users.fetch(uid).catch(() => null);
+      try { if (target) await target.send('🎉 קיבלת **User Premium** מפלא!\n\n✅ כל הפקודות פתוחות לך\n✅ AI בפרטי\n✅ גישה מלאה בכל שרת'); } catch {}
+      await interaction.update({ content: `⭐ **User Premium הופעל ל-${target ? target.tag : uid}!**`, components: [] });
+      return;
+    }
+    if (interaction.isButton() && interaction.customId.startsWith('prem_urevoke_')) {
+      if (interaction.user.id !== '1266854019767341107') return interaction.reply({ content: '❌ רק היוצר.', ephemeral: true });
+      const uid = interaction.customId.replace('prem_urevoke_', '');
+      db.removeUserPremium(uid);
+      const target = await interaction.client.users.fetch(uid).catch(() => null);
+      await interaction.update({ content: `❌ **User Premium הוסר מ-${target ? target.tag : uid}.**`, components: [] });
+      return;
+    }
+
     // ── Shop free info button
     if (interaction.isButton() && interaction.customId === 'pela_shop_free') {
       await interaction.reply({ content: '🆓 **מה בחינם:**\n\n• /help — רשימת כל הפקודות\n• /report — דיווח ליוצר\n• /ban /kick /warn — ניהול בסיסי\n• /purge /lock /unlock — ניהול ערוצים\n• /poll /remind /roll /coinflip — כלים\n• /rank /leaderboard — XP (צפייה בלבד)\n• /embed — הודעות מעוצבות\n\n👑 **Premium מוסיף:** AI חכם, Welcome/Goodbye, טיקטים, טפסים, AutoMod, Button Roles, Glow, Banner AI, Server Design ועוד!', ephemeral: true });
@@ -406,7 +463,8 @@ client.on(Events.MessageCreate, async message => {
   // Server management is done via @mention or AI-chat channel inside a server.
   // Routing admins to aiChat caused the 'pick a server' prompt for casual chat.
   if (!message.guild) {
-    const sp = client.guilds.cache.some(g => { try { return db.isPremium(g.id) && g.members.cache.has(message.author.id); } catch { return false; } });
+    const hasUserPremium = db.isUserPremium(message.author.id);
+    const sp = hasUserPremium || client.guilds.cache.some(g => { try { return db.isPremium(g.id) && g.members.cache.has(message.author.id); } catch { return false; } });
     if (!sp && message.author.id !== '1266854019767341107') { await message.reply('\u{1F451} **AI = Premium!** /shop'); return; }
     const { handleDmMessage: pelaDm } = require('./src/utils/pelaAI');
     await pelaDm(message, client, db).catch(console.error);
@@ -418,8 +476,7 @@ client.on(Events.MessageCreate, async message => {
   const isAiCh     = aiCfg.ai_chat_channel_id && message.channel.id === aiCfg.ai_chat_channel_id;
   const isMentioned = message.mentions.users.has(client.user.id);
   if (isAiCh || isMentioned) {
-    if (!db.isPremium(message.guild.id) && message.author.id !== '1266854019767341107') { await message.reply({ content: '\u{1F451} **AI Premium!** /shop' }); return; }
-    if (!db.isPremium(message.guild.id) && message.author.id !== '1266854019767341107') { await message.reply('👑 **צ\x27אט AI הוא פיצ\x27ר Premium!** כתבו `/shop` לפרטים.'); return; }
+    if (!db.isPremium(message.guild.id) && !db.isUserPremium(message.author.id) && message.author.id !== '1266854019767341107') { await message.reply({ content: '\u{1F451} **AI Premium!** /shop' }); return; }
     const isAdminUser = message.author.id === '1266854019767341107'
                      || !!message.member?.permissions.has(PermissionFlagsBits.Administrator);
     if (isAdminUser) {

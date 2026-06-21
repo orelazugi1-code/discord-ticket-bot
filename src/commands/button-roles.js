@@ -1,4 +1,4 @@
-const {
+﻿const {
   SlashCommandBuilder,
   PermissionFlagsBits,
   EmbedBuilder,
@@ -23,7 +23,7 @@ module.exports = {
     .addStringOption(o => o.setName('description').setDescription('Embed description').setMaxLength(1000)),
 
   async execute(interaction, db) {
-    if (!db.isPremium(interaction.guildId)) return interaction.reply({ content: '👑 **Premium בלבד!** כתבו /shop לפרטים.', ephemeral: true });
+    if (!db.isPremium(interaction.guildId) && !db.isUserPremium(interaction.user.id)) return interaction.reply({ content: '👑 **Premium בלבד!** כתבו /shop לפרטים.', ephemeral: true });
 
     await interaction.deferReply({ ephemeral: true });
 

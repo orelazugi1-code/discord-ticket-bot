@@ -13,7 +13,7 @@ module.exports = {
     .addStringOption(o => o.setName('badword_remove').setDescription('Remove a word from the bad-word filter')),
 
   async execute(interaction, db) {
-    if (!db.isPremium(interaction.guildId)) return interaction.reply({ content: '👑 **Premium בלבד!** כתבו /shop לפרטים.', ephemeral: true });
+    if (!db.isPremium(interaction.guildId) && !db.isUserPremium(interaction.user.id)) return interaction.reply({ content: '👑 **Premium בלבד!** כתבו /shop לפרטים.', ephemeral: true });
 
     const cfg = db.getAutomodConfig(interaction.guild.id);
 
