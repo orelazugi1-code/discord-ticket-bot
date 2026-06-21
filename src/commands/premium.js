@@ -9,7 +9,7 @@ module.exports = {
   async execute(interaction, db) {
     const isOwner = interaction.user.id === OWNER_ID;
     const serverHas = interaction.guildId ? db.isPremium(interaction.guildId) : false;
-    const userHas = db.isUserPremium(interaction.user.id);
+    const userHas = typeof db.isUserPremium === 'function' ? db.isUserPremium(interaction.user.id) : false;
 
     const embed = new EmbedBuilder()
       .setColor(0xFFD700)
