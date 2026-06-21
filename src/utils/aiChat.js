@@ -10,7 +10,7 @@ const axios = require('axios');
 const PROVIDERS = [
   { name: 'Groq',       envKey: 'GROQ_API_KEY',       type: 'openai',  jsonMode: true,
     url: 'https://api.groq.com/openai/v1/chat/completions',
-    model: 'gemma2-9b-it' },
+    model: 'llama-3.3-70b-versatile' },
   { name: 'Gemini',     envKey: 'GEMINI_API_KEY',      type: 'gemini',  jsonMode: true,
     url: 'https://generativelanguage.googleapis.com/v1beta/models',
     model: 'gemini-2.0-flash' },
@@ -28,6 +28,24 @@ function isConfigured(provider) {
 }
 const OWNER_ID   = '1266854019767341107';
 const CONV_TTL   = 30 * 60 * 1000;
+const DESTRUCTIVE_TYPES = ['delete_channel', 'delete_category', 'delete_role'];
+
+// ── Pending action plans (waiting for button confirmation) ────────────────────
+const pendingPlans = new Map();
+
+function storePlan(guildId, userId, actions) {
+  const key = `${guildId}:${userId}`;
+  pendingPlans.set(key, { actions, createdAt: Date.now() });
+  setTimeout(() => pendingPlans.delete(key), 5 * 60_000);
+  return key;
+}
+
+function popPlan(guildId, userId) {
+  const key = `${guildId}:${userId}`;
+  const plan = pendingPlans.get(key);
+  pendingPlans.delete(key);
+  return plan?.actions || null;
+}
 
 // ── Conversation store ────────────────────────────────────────────────────────
 
@@ -97,17 +115,16 @@ NEVER say "Done", "Created X", "Setting up Y" unless X/Y is in your actions arra
 If you cannot do something → say so clearly and leave actions empty.
 If the request is unclear → ask ONE specific question, do NOT guess.
 
-━━━━ CRITICAL: DESTRUCTIVE ACTIONS NEED CONFIRMATION ━━━━
-When the user asks to delete, clean up, reorganize, or remove things:
-1. FIRST: Analyze the server state. List what you PLAN to do in "reply".
-2. Ask for confirmation: "מאשר?" / "Approve?"
-3. Do NOT put delete actions in "actions" until the user says yes/אישור/כן/תתחיל/יאללה.
-4. ORGANIZING ≠ DELETING. When asked to "organize" or "clean up":
-   - MOVE channels to correct categories (use move_channel)
-   - RENAME channels if needed (use rename_channel)
-   - Only DELETE true duplicates or empty channels AFTER confirmation
-   - Create missing categories and move orphan channels into them
-5. NEVER delete and then say "I'll check" — checking comes FIRST, action comes AFTER.
+━━━━ CRITICAL: DESTRUCTIVE ACTIONS ━━━━
+Delete actions (delete_channel, delete_category, delete_role) will automatically show a confirmation button to the user.
+You can include them in "actions" — the system handles confirmation.
+BUT: ORGANIZING ≠ DELETING. When asked to "organize" or "clean up":
+1. MOVE channels to correct categories (use move_channel) — this runs immediately.
+2. RENAME channels if needed (use rename_channel) — this runs immediately.
+3. Only DELETE true duplicates or empty items — these wait for button confirmation.
+4. Create missing categories and move orphan channels into them.
+5. NEVER say "I'm checking" and then put actions. Either analyze (no actions) or act (with actions). Not both.
+6. Actually look at the server state above — use EXACT names, don't invent channels/categories that don't exist.
 
 ━━━━ WRITE TO CHANNEL vs CREATE CHANNEL ━━━━
 Use send_message → user wants to POST content to an EXISTING channel (rules, announcements, info text).
@@ -124,10 +141,7 @@ User: "create a gaming section with 3 channels"
 ]}
 
 User: "תסדר את השרת יש בלאגן" (organize the server)
-{"reply":"בדקתי את השרת. הנה מה שאני מציע:\\n\\n🗑️ **למחוק (כפילויות):** #introductions (מופיע פעמיים), #suggestions (מופיע 3 פעמים)\\n📁 **להעביר קטגוריה:** #rules → 📋 Info, #chat → 💬 General\\n➕ **ליצור קטגוריה:** 📋 Info (לערוצי מידע שמפוזרים)\\n\\nמאשר?","actions":[]}
-
-User: "כן תתחיל" (yes, start — AFTER seeing the plan above)
-{"reply":"מסדר!","actions":[
+{"reply":"מסדר את השרת!","actions":[
   {"type":"create_category","name":"📋 Info"},
   {"type":"move_channel","name":"rules","category":"📋 Info"},
   {"type":"move_channel","name":"chat","category":"💬 General"},
@@ -135,6 +149,7 @@ User: "כן תתחיל" (yes, start — AFTER seeing the plan above)
   {"type":"delete_channel","name":"📝-suggestions"},
   {"type":"delete_channel","name":"📄-suggestions"}
 ]}
+(move/create run immediately, deletes show a confirmation button automatically)
 
 User: "write server rules in #rules" (rules channel already exists)
 {"reply":"שולח חוקים ל-#rules!","actions":[
@@ -198,7 +213,7 @@ ${ownerSection}
 2. Keep "reply" SHORT — but for organize/cleanup requests, list the full plan first.
 3. Channel/category names include a thematic emoji unless they already exist in the list.
 4. Use EXACT names from the server state for existing channels/roles/categories.
-5. NEVER delete unless admin explicitly says "delete"/"remove"/"מחק"/"הסר" OR confirms your cleanup plan.
+5. Delete actions automatically require button confirmation — include them when appropriate.
 6. Return ONLY valid JSON — nothing outside the JSON object.
 7. Prefer start_ticket_wizard over setup_ticket — it guides the admin step by step with Discord UI.
 8. Prefer start_form_wizard over setup_form — same reason.
@@ -688,6 +703,24 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
 
 // ── Reply helper ──────────────────────────────────────────────────────────────
 
+async function sendReplyWithComponents(message, text, components) {
+  if (!text || !text.trim()) text = '👋';
+  if (text.length <= 1990) return message.reply({ content: text, components });
+  const lines = text.split('\n');
+  let chunk = '', first = true;
+  for (const line of lines) {
+    if ((chunk + '\n' + line).length > 1990) {
+      if (first) { await message.reply({ content: chunk }); first = false; }
+      else await message.channel.send({ content: chunk });
+      chunk = line;
+    } else { chunk = chunk ? chunk + '\n' + line : line; }
+  }
+  if (chunk) {
+    if (first) await message.reply({ content: chunk, components });
+    else await message.channel.send({ content: chunk, components });
+  }
+}
+
 async function sendReply(message, text) {
   if (!text || !text.trim()) return message.reply({ content: '👋' });
   if (text.length <= 1990) return message.reply({ content: text });
@@ -707,40 +740,65 @@ async function sendReply(message, text) {
 
 async function runAiRound(convKey, guild, userText, db, isOwner, channel, userId) {
   const conv = getConv(convKey);
-  // Detect and store language on first meaningful message
   if (conv.lang === 'en') { const dl = detectLang(userText); if (dl !== 'en') conv.lang = dl; }
   const raw  = await callAiWithFallback(buildSystemPrompt(guild, isOwner, conv.lang || 'en'), conv.messages, userText);
   const { reply, actions } = parseResponse(raw);
 
   let extra = '';
   if (actions.length) {
-    const { done, fails } = await executeActions(guild, actions, db, isOwner, channel, userId);
-    if (done.length)  extra += '\n\n✅ ' + done.join('\n✅ ');
-    if (fails.length) extra += '\n\n⚠️ ' + fails.join('\n⚠️ ');
+    const hasDestructive = actions.some(a => DESTRUCTIVE_TYPES.includes(a.type));
+    const safeActions    = actions.filter(a => !DESTRUCTIVE_TYPES.includes(a.type));
+    const dangerActions  = actions.filter(a => DESTRUCTIVE_TYPES.includes(a.type));
 
-    // Auto-retry once when every action failed (and no wizard component was sent)
-    const allFailed = done.length === 0 && fails.length > 0;
-    const hasWizard = actions.some(a => ['ask_channel','ask_roles','ask_confirm','start_form_wizard','start_ticket_wizard'].includes(a.type));
-    if (allFailed && !hasWizard) {
-      try {
-        const retryInput = 'The following actions all failed: ' + fails.join(', ') + '. Try a completely different approach automatically without asking the user.';
-        const retryRaw   = await callAiWithFallback(buildSystemPrompt(guild, isOwner, conv.lang || 'en'),
-          [...conv.messages, { role: 'user', content: userText }, { role: 'assistant', content: reply }], retryInput);
-        const retryP = parseResponse(retryRaw);
-        if (retryP.actions.length > 0) {
-          const r2 = await executeActions(guild, retryP.actions, db, isOwner, channel, userId);
-          if (r2.done.length > 0) {
-            extra += '\n\n🔄 *Auto-retried:* \n✅ ' + r2.done.join('\n✅ ');
-            if (r2.fails.length) extra += '\n⚠️ ' + r2.fails.join('\n⚠️ ');
+    if (safeActions.length) {
+      const { done, fails } = await executeActions(guild, safeActions, db, isOwner, channel, userId);
+      if (done.length)  extra += '\n\n✅ ' + done.join('\n✅ ');
+      if (fails.length) extra += '\n\n⚠️ ' + fails.join('\n⚠️ ');
+    }
+
+    if (hasDestructive && dangerActions.length) {
+      storePlan(guild.id, userId, dangerActions);
+      const summary = dangerActions.map(a => `• ${a.type === 'delete_channel' ? '🗑️ ערוץ' : a.type === 'delete_category' ? '🗑️ קטגוריה' : '🗑️ תפקיד'}: **${a.name}**`).join('\n');
+      extra += `\n\n⚠️ **פעולות מחיקה ממתינות לאישור:**\n${summary}`;
+
+      const confirmRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`ai_confirm:${guild.id}:${userId}`).setLabel('✅ מאשר מחיקה').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId(`ai_cancel:${guild.id}:${userId}`).setLabel('❌ ביטול').setStyle(ButtonStyle.Secondary),
+      );
+
+      pushMsg(convKey, 'user', userText);
+      pushMsg(convKey, 'assistant', reply + ' [Waiting for confirmation]');
+      return { text: reply + extra, components: [confirmRow] };
+    }
+
+    if (!safeActions.length && !hasDestructive) {
+      const { done, fails } = await executeActions(guild, actions, db, isOwner, channel, userId);
+      if (done.length)  extra += '\n\n✅ ' + done.join('\n✅ ');
+      if (fails.length) extra += '\n\n⚠️ ' + fails.join('\n⚠️ ');
+
+      const allFailed = done.length === 0 && fails.length > 0;
+      const hasWizard = actions.some(a => ['ask_channel','ask_roles','ask_confirm','start_form_wizard','start_ticket_wizard'].includes(a.type));
+      if (allFailed && !hasWizard) {
+        try {
+          const retryInput = 'The following actions all failed: ' + fails.join(', ') + '. Try a completely different approach automatically without asking the user.';
+          const retryRaw   = await callAiWithFallback(buildSystemPrompt(guild, isOwner, conv.lang || 'en'),
+            [...conv.messages, { role: 'user', content: userText }, { role: 'assistant', content: reply }], retryInput);
+          const retryP = parseResponse(retryRaw);
+          if (retryP.actions.length > 0) {
+            const r2 = await executeActions(guild, retryP.actions, db, isOwner, channel, userId);
+            if (r2.done.length > 0) {
+              extra += '\n\n🔄 *Auto-retried:* \n✅ ' + r2.done.join('\n✅ ');
+              if (r2.fails.length) extra += '\n⚠️ ' + r2.fails.join('\n⚠️ ');
+            }
           }
-        }
-      } catch (e) { console.error('[aiChat] auto-retry:', e.message); }
+        } catch (e) { console.error('[aiChat] auto-retry:', e.message); }
+      }
     }
   }
 
   pushMsg(convKey, 'user',      userText);
   pushMsg(convKey, 'assistant', reply + (extra ? ' [Actions completed]' : ''));
-  return reply + extra;
+  return { text: reply + extra };
 }
 
 // ── Guild message handler ─────────────────────────────────────────────────────
@@ -761,8 +819,12 @@ async function handleGuildMessage(message, db) {
   message.channel.sendTyping().catch(() => {});
 
   try {
-    const fullReply = await runAiRound(convKey, message.guild, userText, db, isOwner, message.channel, message.author.id);
-    await sendReply(message, fullReply);
+    const result = await runAiRound(convKey, message.guild, userText, db, isOwner, message.channel, message.author.id);
+    if (result.components) {
+      await sendReplyWithComponents(message, result.text, result.components);
+    } else {
+      await sendReply(message, result.text);
+    }
   } catch (e) {
     console.error('[aiChat] guild error:', e.response?.data?.error?.message ?? e.message);
     const isOwnerUser = message.author.id === OWNER_ID;
@@ -816,8 +878,12 @@ async function handleDmMessage(message, client, db) {
     const userText = message.content.trim();
     if (!userText) return;
 
-    const fullReply = await runAiRound(convKey, guild, userText, db, isOwner, message.channel, userId);
-    await sendReply(message, fullReply);
+    const result = await runAiRound(convKey, guild, userText, db, isOwner, message.channel, userId);
+    if (result.components) {
+      await sendReplyWithComponents(message, result.text, result.components);
+    } else {
+      await sendReply(message, result.text);
+    }
   } catch (e) {
     console.error('[aiChat] DM error:', e.response?.data?.error?.message ?? e.message);
     const isOwnerUser = message.author.id === OWNER_ID;
@@ -858,4 +924,4 @@ async function continueConvFromWizard(interaction, db, userInput, guildId, userI
   }
 }
 
-module.exports = { handleGuildMessage, handleDmMessage, clearConv, continueConvFromWizard, callAiWithFallback };
+module.exports = { handleGuildMessage, handleDmMessage, clearConv, continueConvFromWizard, callAiWithFallback, popPlan, executeActions };

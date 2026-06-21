@@ -247,6 +247,33 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
+    // ── AI confirmation buttons (approve/cancel destructive actions) ─────
+    if (interaction.isButton() && interaction.customId.startsWith('ai_confirm:')) {
+      const [, guildId, ownerId] = interaction.customId.split(':');
+      if (interaction.user.id !== ownerId) return interaction.reply({ content: '❌ רק מי שביקש יכול לאשר.', ephemeral: true });
+      const { popPlan, executeActions } = require('./src/utils/aiChat');
+      const actions = popPlan(guildId, ownerId);
+      if (!actions) return interaction.update({ content: '⏰ התוכנית פגה — שלח את הבקשה מחדש.', components: [] });
+      await interaction.update({ content: '⏳ מבצע...', components: [] });
+      const guild = interaction.client.guilds.cache.get(guildId);
+      if (!guild) return interaction.editReply({ content: '❌ לא מצאתי את השרת.' });
+      const isOwner = ownerId === '1266854019767341107';
+      const { done, fails } = await executeActions(guild, actions, db, isOwner, interaction.channel, ownerId);
+      let result = '';
+      if (done.length)  result += '✅ ' + done.join('\n✅ ');
+      if (fails.length) result += '\n⚠️ ' + fails.join('\n⚠️ ');
+      await interaction.editReply({ content: result || '✅ בוצע!' });
+      return;
+    }
+    if (interaction.isButton() && interaction.customId.startsWith('ai_cancel:')) {
+      const [, guildId, ownerId] = interaction.customId.split(':');
+      if (interaction.user.id !== ownerId) return interaction.reply({ content: '❌ רק מי שביקש יכול לבטל.', ephemeral: true });
+      const { popPlan } = require('./src/utils/aiChat');
+      popPlan(guildId, ownerId);
+      await interaction.update({ content: '❌ בוטל — לא נמחק כלום.', components: [] });
+      return;
+    }
+
     // ── Promo "not interested" button ──────────────────────────────────────
     if (interaction.isButton() && interaction.customId === 'pela_promo_no') {
       await interaction.update({ content: '👍 תודה שקראת! אם תשנה דעתך — תמיד אפשר להוסיף את פלא.', embeds: [], components: [] });
