@@ -46,9 +46,13 @@ async function handleButton(interaction, db) {
         });
       }
 
-      // No categories — show modal with global questions
+      // No categories — check for questions
       let qs = [];
       try { qs = db.getTicketQuestions(interaction.guildId); } catch (err) { console.error('[ticket:open] error:', err.message); }
+      if (qs.length === 0) {
+        // No questions — open ticket directly without modal
+        return openTicketDirectly(interaction, db, null);
+      }
       return interaction.showModal(buildTicketModal('ticket:create', qs));
     }
     if (parts[1] === 'close') {
@@ -489,6 +493,90 @@ async function handleTicketQuestionBtn(interaction, db, sessions) {
 }
 
 
+// ── Open ticket directly (no modal, no questions) ─────────────────────────────
+
+async function openTicketDirectly(interaction, db, categoryId) {
+  await interaction.deferReply({ ephemeral: true });
+  const { guild, user } = interaction;
+  const config = db.getGuildConfig(guild.id);
+
+  const open = db.getOpenTicketsByUser(guild.id, user.id);
+  if (open.length >= (config.max_tickets || 1)) {
+    return interaction.editReply({ content: `❌ יש לך כבר ${open.length} טיקט(ים) פתוחים.` });
+  }
+
+  let categoryName = null;
+  if (categoryId) {
+    try {
+      const cats = db.getTicketCategories(guild.id);
+      const cat = cats.find(c => c.id === categoryId);
+      if (cat) categoryName = cat.name;
+    } catch {}
+  }
+
+  const subject = categoryName || 'Support Request';
+  const description = 'פתח טיקט חדש.';
+
+  const overwrites = [
+    { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+    { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+  ];
+  const roleKeys = ['support_role_id', 'support_role_id_2', 'support_role_id_3', 'support_role_id_4', 'support_role_id_5'];
+  const supportRoleIds = roleKeys.map(k => config[k]).filter(Boolean);
+  for (const roleId of supportRoleIds) {
+    overwrites.push({ id: roleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
+  }
+
+  const channelOpts = {
+    name: `ticket-${user.username}`,
+    type: ChannelType.GuildText,
+    permissionOverwrites: overwrites,
+    topic: `Ticket by ${user.username} | ${subject}`,
+  };
+  if (config.ticket_category_id) channelOpts.parent = config.ticket_category_id;
+
+  const ticketChannel = await guild.channels.create(channelOpts);
+  db.createTicket(ticketChannel.id, guild.id, user.id, subject, description);
+  const ticket = db.getTicketByChannel(ticketChannel.id);
+
+  const embed = new EmbedBuilder()
+    .setTitle(`🎫 Ticket #${ticket.id}`)
+    .setDescription('תאר את הבקשה שלך כאן 👇')
+    .setColor(0x7c5af7)
+    .addFields(
+      { name: 'Opened By', value: `<@${user.id}>`, inline: true },
+      { name: 'Status', value: '🟢 Open', inline: true },
+      ...(categoryName ? [{ name: 'Type', value: categoryName, inline: true }] : []),
+    )
+    .setTimestamp()
+    .setFooter({ text: `User ID: ${user.id}` });
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('ticket:close').setLabel('Close Ticket').setEmoji('🔒').setStyle(ButtonStyle.Danger),
+  );
+
+  const mentions = supportRoleIds.map(id => `<@&${id}>`).join(' ');
+  await ticketChannel.send({ content: `${user} ${mentions}`.trim(), embeds: [embed], components: [row] });
+
+  try {
+    const { generateTicketGreeting } = require('../utils/pelaAI');
+    const greeting = await generateTicketGreeting(user.username, subject);
+    if (greeting) await ticketChannel.send({ content: greeting });
+  } catch {}
+
+  if (config.log_channel_id) {
+    const logCh = guild.channels.cache.get(config.log_channel_id);
+    if (logCh) {
+      await logCh.send({ embeds: [new EmbedBuilder().setColor(0x2ECC71).setTitle('🎫 New Ticket').addFields(
+        { name: 'User', value: `<@${user.id}>`, inline: true },
+        { name: 'Channel', value: `<#${ticketChannel.id}>`, inline: true },
+      ).setTimestamp()] }).catch(() => {});
+    }
+  }
+
+  await interaction.editReply({ content: `✅ הטיקט נפתח! → <#${ticketChannel.id}>` });
+}
+
 // ── Build ticket modal ─────────────────────────────────────────────────────────
 
 function buildTicketModal(customId, qs) {
@@ -528,6 +616,9 @@ async function handleSelectMenu(interaction, db) {
     const categoryId = parseInt(interaction.values[0]);
     let qs = [];
     try { qs = db.getCategoryQuestions(categoryId); } catch {}
+    if (qs.length === 0) {
+      return openTicketDirectly(interaction, db, categoryId);
+    }
     return interaction.showModal(buildTicketModal(`ticket:create:${categoryId}`, qs));
   }
 }
