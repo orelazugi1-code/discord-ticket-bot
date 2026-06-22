@@ -404,6 +404,7 @@ async function startEvent(channel, client) {
 
 async function handleEventButton(interaction, client) {
   const eventId = interaction.guild.id;
+  const cid = interaction.customId;
   let event = activeEvents.get(eventId);
 
   // Auto-create event if someone clicks ready but no event in memory (e.g. after restart)
@@ -424,7 +425,6 @@ async function handleEventButton(interaction, client) {
   }
   if (!event) return false;
 
-  const cid = interaction.customId;
   if (!cid.startsWith('evt_')) return false;
 
   if (cid === 'evt_ready') {
