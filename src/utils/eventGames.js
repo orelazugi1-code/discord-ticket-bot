@@ -1,7 +1,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
 const https = require('https');
 
-const LOG_CHANNEL = '1517919493534257363';
+const LOG_CHANNEL = '1511008090940641300';
 const OWNER_ID = '1266854019767341107';
 const MIN_PLAYERS = 10;
 
@@ -404,7 +404,24 @@ async function startEvent(channel, client) {
 
 async function handleEventButton(interaction, client) {
   const eventId = interaction.guild.id;
-  const event = activeEvents.get(eventId);
+  let event = activeEvents.get(eventId);
+
+  // Auto-create event if someone clicks ready but no event in memory (e.g. after restart)
+  if (!event && cid === 'evt_ready') {
+    activeEvents.set(eventId, {
+      channelId: interaction.channel.id,
+      messageId: interaction.message.id,
+      readyPlayers: new Set(),
+      phase: 'waiting',
+      currentGame: null,
+      gameIndex: 0,
+      gameMessage: null,
+      overallScores: {},
+      client,
+    });
+    event = activeEvents.get(eventId);
+    await logEvent(client, '\ud83d\udd04 \u05d0\u05d9\u05e8\u05d5\u05e2 \u05e0\u05d5\u05e6\u05e8 \u05de\u05d7\u05d3\u05e9 \u05d0\u05d7\u05e8\u05d9 \u05e8\u05d9\u05e1\u05d8\u05e8\u05d8 (\u05dc\u05d7\u05d9\u05e6\u05d4 \u05e8\u05d0\u05e9\u05d5\u05e0\u05d4)');
+  }
   if (!event) return false;
 
   const cid = interaction.customId;
