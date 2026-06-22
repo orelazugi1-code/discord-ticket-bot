@@ -187,14 +187,13 @@ function delW(gid, uid)        { store.delete(`${gid}:${uid}`); }
 
 function nextStep(type, step, data) {
   if (type === 'form') {
-    const map = { questions:'fm_title', fm_title:'fm_desc', fm_desc:'fm_btn_label', fm_btn_label:'channel', channel:'log_channel', log_channel:'approval',
+    const map = { questions:'fm_details', fm_details:'channel', channel:'log_channel', log_channel:'approval',
                   approval: data.approval ? 'approval_role' : 'confirm',
                   approval_role:'confirm' };
     return map[step] ?? 'confirm';
   }
   if (type === 'ticket') {
-    const map = { channel:'roles', roles:'tk_title',
-                  tk_title:'tk_message', tk_message:'tk_btn_label', tk_btn_label:'tk_color',
+    const map = { channel:'roles', roles:'tk_details', tk_details:'tk_color',
                   tk_color:'categories_q',
                   categories_q: data.categories_enabled ? 'cat_builder' : 'confirm',
                   cat_builder:'confirm' };
@@ -202,7 +201,7 @@ function nextStep(type, step, data) {
   }
 
   if (type === 'role_panel') {
-    const map = { channel:'button_builder', button_builder:'color', color:'title', title:'description', description:'confirm' };
+    const map = { channel:'button_builder', button_builder:'color', color:'rp_details', rp_details:'confirm' };
     return map[step] ?? 'confirm';
   }
   if (type === 'welcome' || type === 'goodbye') {
@@ -469,9 +468,15 @@ function buildStepMessage(guild, gid, uid, w) {
   switch (key) {
     case 'form:questions':     return formBuilderRow(gid, uid, lang, data.title, data.questions || []);
 
-    case 'form:fm_title':     { const m = new ModalBuilder().setCustomId(`wizmod:fm_title:${gid}:${uid}`).setTitle(t(lang,'fm_title_prompt')); m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('val').setLabel(t(lang,'fm_title_prompt')).setStyle(TextInputStyle.Short).setPlaceholder(t(lang,'fm_title_ph')).setRequired(true).setMaxLength(100))); return { __modal: m }; }
-    case 'form:fm_desc':      { const m = new ModalBuilder().setCustomId(`wizmod:fm_desc:${gid}:${uid}`).setTitle(t(lang,'fm_desc_prompt')); m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('val').setLabel(t(lang,'fm_desc_prompt')).setStyle(TextInputStyle.Paragraph).setPlaceholder(t(lang,'fm_desc_ph')).setRequired(false).setMaxLength(500))); return { __modal: m }; }
-    case 'form:fm_btn_label': { const m = new ModalBuilder().setCustomId(`wizmod:fm_btn_label:${gid}:${uid}`).setTitle(t(lang,'fm_btn_label_prompt')); m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('val').setLabel(t(lang,'fm_btn_label_prompt')).setStyle(TextInputStyle.Short).setPlaceholder(t(lang,'fm_btn_label_ph')).setRequired(true).setMaxLength(80))); return { __modal: m }; }
+    case 'form:fm_details': {
+      const m = new ModalBuilder().setCustomId(`wizmod:fm_details:${gid}:${uid}`).setTitle(t(lang,'fm_title_prompt'));
+      m.addComponents(
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('title').setLabel(t(lang,'fm_title_prompt')).setStyle(TextInputStyle.Short).setPlaceholder(t(lang,'fm_title_ph')).setRequired(true).setMaxLength(100)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('desc').setLabel(t(lang,'fm_desc_prompt')).setStyle(TextInputStyle.Paragraph).setPlaceholder(t(lang,'fm_desc_ph')).setRequired(false).setMaxLength(500)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('btn').setLabel(t(lang,'fm_btn_label_prompt')).setStyle(TextInputStyle.Short).setPlaceholder(t(lang,'fm_btn_label_ph')).setRequired(true).setMaxLength(80)),
+      );
+      return { __modal: m };
+    }
     case 'form:channel':       return chRow(guild, gid, uid, lang, t(lang,'form_ch_prompt'));
     case 'form:log_channel':   return chRow(guild, gid, uid, lang, t(lang,'log_ch_prompt'), true);
     case 'form:approval':      return yesNoRow(gid, uid, lang, t(lang,'approval_q'));
@@ -484,15 +489,27 @@ function buildStepMessage(guild, gid, uid, w) {
                                  ? catQBuilderRow(gid, uid, lang, data.categories[data.current_cat_idx]?.name, data.categories[data.current_cat_idx]?.questions||[])
                                  : catBuilderRow(gid, uid, lang, data.categories||[]);
 
-    case 'ticket:tk_title':     { const m = new ModalBuilder().setCustomId(`wizmod:tk_title:${gid}:${uid}`).setTitle(t(lang,'tk_title_prompt')); m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('val').setLabel(t(lang,'tk_title_prompt')).setStyle(TextInputStyle.Short).setPlaceholder(t(lang,'tk_title_ph')).setRequired(true).setMaxLength(100))); return { __modal: m }; }
-    case 'ticket:tk_message':   { const m = new ModalBuilder().setCustomId(`wizmod:tk_message:${gid}:${uid}`).setTitle(t(lang,'tk_desc_prompt')); m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('val').setLabel(t(lang,'tk_desc_prompt')).setStyle(TextInputStyle.Paragraph).setPlaceholder(t(lang,'tk_desc_ph')).setRequired(false).setMaxLength(500))); return { __modal: m }; }
-    case 'ticket:tk_btn_label': { const m = new ModalBuilder().setCustomId(`wizmod:tk_btn_label:${gid}:${uid}`).setTitle(t(lang,'tk_btn_label_prompt')); m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('val').setLabel(t(lang,'tk_btn_label_prompt')).setStyle(TextInputStyle.Short).setPlaceholder(t(lang,'tk_btn_label_ph')).setRequired(true).setMaxLength(80))); return { __modal: m }; }
+    case 'ticket:tk_details': {
+      const m = new ModalBuilder().setCustomId(`wizmod:tk_details:${gid}:${uid}`).setTitle(t(lang,'tk_title_prompt'));
+      m.addComponents(
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('title').setLabel(t(lang,'tk_title_prompt')).setStyle(TextInputStyle.Short).setPlaceholder(t(lang,'tk_title_ph')).setRequired(true).setMaxLength(100)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('desc').setLabel(t(lang,'tk_desc_prompt')).setStyle(TextInputStyle.Paragraph).setPlaceholder(t(lang,'tk_desc_ph')).setRequired(false).setMaxLength(500)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('btn').setLabel(t(lang,'tk_btn_label_prompt')).setStyle(TextInputStyle.Short).setPlaceholder(t(lang,'tk_btn_label_ph')).setRequired(true).setMaxLength(80)),
+      );
+      return { __modal: m };
+    }
     case 'ticket:tk_color':     return colorPickerRow(gid, uid, lang);
     case 'ticket:confirm':     return ticketPreviewRow(gid, uid, guild, lang, w);
 
     // role panel
-    case 'role_panel:title':          { const m = new ModalBuilder().setCustomId(`wizmod:rp_title:${gid}:${uid}`).setTitle(t(lang,'rp_title_prompt').slice(0,45)); m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('val').setLabel(t(lang,'rp_title_prompt').slice(0,45)).setStyle(TextInputStyle.Short).setPlaceholder('\ud83c\udfad Choose Your Roles').setRequired(true).setMaxLength(100))); return { __modal: m }; }
-    case 'role_panel:description':    { const m = new ModalBuilder().setCustomId(`wizmod:rp_desc:${gid}:${uid}`).setTitle(t(lang,'rp_desc_prompt').slice(0,45)); m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('val').setLabel(t(lang,'rp_desc_prompt').slice(0,45)).setStyle(TextInputStyle.Paragraph).setPlaceholder('Click a button to get a role!').setRequired(false).setMaxLength(500))); return { __modal: m }; }
+    case 'role_panel:rp_details': {
+      const m = new ModalBuilder().setCustomId(`wizmod:rp_details:${gid}:${uid}`).setTitle(t(lang,'rp_title_prompt').slice(0,45));
+      m.addComponents(
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('title').setLabel(t(lang,'rp_title_prompt').slice(0,45)).setStyle(TextInputStyle.Short).setPlaceholder('\ud83c\udfad Choose Your Roles').setRequired(true).setMaxLength(100)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('desc').setLabel(t(lang,'rp_desc_prompt').slice(0,45)).setStyle(TextInputStyle.Paragraph).setPlaceholder('Click a button to get a role!').setRequired(false).setMaxLength(500)),
+      );
+      return { __modal: m };
+    }
     case 'role_panel:channel':        return chRow(guild, gid, uid, lang, t(lang,'rp_ch_prompt'));
     case 'role_panel:button_builder': return rpButtonBuilderRow(gid, uid, lang, data.buttons || []);
     case 'role_panel:color':          return colorPickerRow(gid, uid, lang);
@@ -908,7 +925,7 @@ async function handleWizardModal(interaction, db) {
   const lang = w?.lang || 'en';
   if (!w) return interaction.update({ content: t(lang,'expired'), embeds: [], components: [] });
 
-  const val = interaction.fields.getTextInputValue('val').trim();
+  const val = (() => { try { return interaction.fields.getTextInputValue('val').trim(); } catch { return ''; } })();
 
   if (action === 'q_text') {
     w.data = w.data || {};
@@ -930,34 +947,11 @@ async function handleWizardModal(interaction, db) {
 
 
 
-  // form title modal
-  if (action === 'fm_title') {
+  if (action === 'fm_details') {
     w.data = w.data || {};
-    w.data.title = val;
-    w.step = nextStep(w.type, w.step, w.data);
-    setW(gid, uid, w);
-    const msg = buildStepMessage(interaction.guild, gid, uid, w);
-    if (msg?.__modal) return interaction.showModal(msg.__modal);
-    if (msg) return interaction.update(msg);
-    return;
-  }
-
-  // form description modal
-  if (action === 'fm_desc') {
-    w.data = w.data || {};
-    w.data.description = val || '';
-    w.step = nextStep(w.type, w.step, w.data);
-    setW(gid, uid, w);
-    const msg = buildStepMessage(interaction.guild, gid, uid, w);
-    if (msg?.__modal) return interaction.showModal(msg.__modal);
-    if (msg) return interaction.update(msg);
-    return;
-  }
-
-  // form button label modal
-  if (action === 'fm_btn_label') {
-    w.data = w.data || {};
-    w.data.button_label = val;
+    w.data.title = interaction.fields.getTextInputValue('title').trim();
+    w.data.description = interaction.fields.getTextInputValue('desc').trim() || '';
+    w.data.button_label = interaction.fields.getTextInputValue('btn').trim();
     w.step = nextStep(w.type, w.step, w.data);
     setW(gid, uid, w);
     const msg = buildStepMessage(interaction.guild, gid, uid, w);
@@ -965,34 +959,11 @@ async function handleWizardModal(interaction, db) {
     return;
   }
 
-  // ticket title modal
-  if (action === 'tk_title') {
+  if (action === 'tk_details') {
     w.data = w.data || {};
-    w.data.title = val;
-    w.step = nextStep(w.type, w.step, w.data);
-    setW(gid, uid, w);
-    const msg = buildStepMessage(interaction.guild, gid, uid, w);
-    if (msg?.__modal) return interaction.showModal(msg.__modal);
-    if (msg) return interaction.update(msg);
-    return;
-  }
-
-  // ticket message/description modal
-  if (action === 'tk_message') {
-    w.data = w.data || {};
-    w.data.message = val || '';
-    w.step = nextStep(w.type, w.step, w.data);
-    setW(gid, uid, w);
-    const msg = buildStepMessage(interaction.guild, gid, uid, w);
-    if (msg?.__modal) return interaction.showModal(msg.__modal);
-    if (msg) return interaction.update(msg);
-    return;
-  }
-
-  // ticket button label modal
-  if (action === 'tk_btn_label') {
-    w.data = w.data || {};
-    w.data.button_label = val;
+    w.data.title = interaction.fields.getTextInputValue('title').trim();
+    w.data.message = interaction.fields.getTextInputValue('desc').trim() || '';
+    w.data.button_label = interaction.fields.getTextInputValue('btn').trim();
     w.step = nextStep(w.type, w.step, w.data);
     setW(gid, uid, w);
     const msg = buildStepMessage(interaction.guild, gid, uid, w);
@@ -1000,22 +971,10 @@ async function handleWizardModal(interaction, db) {
     return;
   }
 
-  // role panel title modal
-  if (action === 'rp_title') {
+  if (action === 'rp_details') {
     w.data = w.data || {};
-    w.data.title = val;
-    w.step = nextStep(w.type, w.step, w.data);
-    setW(gid, uid, w);
-    const msg = buildStepMessage(interaction.guild, gid, uid, w);
-    if (msg?.__modal) return interaction.showModal(msg.__modal);
-    if (msg) return interaction.update(msg);
-    return;
-  }
-
-  // role panel description modal
-  if (action === 'rp_desc') {
-    w.data = w.data || {};
-    w.data.description = val || '';
+    w.data.title = interaction.fields.getTextInputValue('title').trim();
+    w.data.description = interaction.fields.getTextInputValue('desc').trim() || '';
     w.step = nextStep(w.type, w.step, w.data);
     setW(gid, uid, w);
     const msg = buildStepMessage(interaction.guild, gid, uid, w);
