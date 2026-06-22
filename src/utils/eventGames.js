@@ -31,7 +31,7 @@ function createBombGame(players) {
 
   return {
     type: 'bomb',
-    name: '💣 משחק הפצצה',
+    name: '🎲 משחק המלכודת',
     players: [...players],
     getAlive() { return this.players.filter(p => !eliminated.has(p)); },
     getEmbed() {
@@ -40,18 +40,18 @@ function createBombGame(players) {
         let line = '';
         for (let c = 0; c < size; c++) {
           const i = r * size + c;
-          line += board[i] ? (bombs.has(i) ? '💥 ' : '✅ ') : '⬛ ';
+          line += board[i] ? (bombs.has(i) ? '❌ ' : '✅ ') : '⬛ ';
         }
         rows.push(line);
       }
       const alive = this.getAlive();
       return new EmbedBuilder()
         .setColor(0xFF4444)
-        .setTitle('💣 משחק הפצצה — 5x5')
+        .setTitle('🎲 משחק המלכודת — 5x5')
         .setDescription(
           rows.join('\n') + '\n\n' +
           '🎯 תור של: <@' + alive[turnIdx % alive.length] + '>\n' +
-          '👥 נותרו: ' + alive.length + ' | 💥 פצצות: ' + bombCount + '\n' +
+          '👥 נותרו: ' + alive.length + ' | ❌ מלכודות: ' + bombCount + '\n' +
           '❌ מודחים: ' + (eliminated.size > 0 ? [...eliminated].map(p => '<@' + p + '>').join(', ') : 'אין')
         );
     },
@@ -64,7 +64,7 @@ function createBombGame(players) {
           row.addComponents(
             new ButtonBuilder()
               .setCustomId('evt_bomb_' + i)
-              .setLabel(board[i] ? (bombs.has(i) ? '💥' : '✅') : String(i + 1))
+              .setLabel(board[i] ? (bombs.has(i) ? '❌' : '✅') : String(i + 1))
               .setStyle(board[i] ? (bombs.has(i) ? ButtonStyle.Danger : ButtonStyle.Success) : ButtonStyle.Secondary)
               .setDisabled(board[i])
           );
@@ -371,7 +371,7 @@ async function startEvent(channel, client) {
       '🎮 **איך זה עובד:**\n' +
       '1️⃣ לחצו על **אני מוכן!** למטה\n' +
       '2️⃣ כשיש ' + MIN_PLAYERS + '+ משתתפים, האירוע מתחיל\n' +
-      '3️⃣ תשחקו משחקונים — פצצה, זיכרון, חידון, מהירות\n' +
+      '3️⃣ תשחקו משחקונים — מלכודת, זיכרון, חידון, מהירות\n' +
       '4️⃣ מי שמנצח הכי הרבה — מקבל Premium!\n\n' +
       '👥 **משתתפים:** 0/' + MIN_PLAYERS + '\n\n' +
       '⏳ ממתינים לעוד שחקנים...'
@@ -471,11 +471,11 @@ async function handleEventButton(interaction, client) {
     const r = game.play(interaction.user.id, cell);
     if (r.error === 'not_your_turn') { await interaction.reply({ content: '❌ זה לא התור שלך!', ephemeral: true }); return true; }
     if (r.error) { await interaction.reply({ content: '❌', ephemeral: true }); return true; }
-    if (r.hit) await logEvent(client, '💥 <@' + interaction.user.id + '> פגע בפצצה!');
+    if (r.hit) await logEvent(client, '❌ <@' + interaction.user.id + '> נפסל!');
     if (r.done) {
       event.overallScores[r.winner] = (event.overallScores[r.winner] || 0) + 3;
       await interaction.update({ embeds: [game.getEmbed()], components: [] });
-      await logEvent(client, '🏆 <@' + r.winner + '> ניצח במשחק הפצצה! (+3)');
+      await logEvent(client, '🏆 <@' + r.winner + '> ניצח במשחק המלכודת! (+3)');
       const ch = await client.channels.fetch(event.channelId);
       setTimeout(() => startNextGame(ch, event), 5000);
       return true;
