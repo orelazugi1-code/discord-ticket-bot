@@ -45,6 +45,51 @@ const T = {
     prev_role: '🎭 Approval Role', prev_questions: (n) => `📝 Questions (${n})`,
     prev_roles: '🎭 Support Roles', prev_cats: (n) => `📁 Categories (${n})`,
     none: 'None',
+
+    // form customization
+    fm_title_prompt: 'Form title',
+    fm_title_ph: 'Application Form',
+    fm_desc_prompt: 'Form description',
+    fm_desc_ph: 'Click below to submit your application.',
+    fm_btn_label_prompt: 'Button label',
+    fm_btn_label_ph: 'Apply',
+    fm_prev_title: '📋 Title', fm_prev_desc: '📝 Description', fm_prev_btn: '🔘 Button Label',
+    // ticket customization
+    tk_title_prompt: 'Panel title',
+    tk_title_ph: '🎫 Support Tickets',
+    tk_desc_prompt: 'Panel description',
+    tk_desc_ph: 'Click below to open a ticket.',
+    tk_btn_label_prompt: 'Button label',
+    tk_btn_label_ph: '🎫 Open a Ticket',
+    tk_color_prompt: '🎨 Choose embed color for the panel',
+    tk_prev_title: '📋 Title', tk_prev_desc: '📝 Description',
+    tk_prev_btn: '🔘 Button Label', tk_prev_color: '🎨 Color',
+    // role panel wizard
+    rp_title_prompt: '📝 What should the panel title be?',
+    rp_desc_prompt: '📝 Description text (below the title)',
+    rp_ch_prompt: '📢 Which channel should the role panel be in?',
+    rp_add_btn: '➕ Add Button', rp_rm_btn: '🗑️ Remove Last', rp_done: '▶️ Continue',
+    rp_btn_label: (n) => `Buttons (${n}/5)`,
+    rp_no_btns: '*(none — click Add Button)*',
+    rp_wiz: '🎭 Role Panel Builder',
+    rp_btn_modal_t: 'Add a Role Button',
+    rp_btn_label_l: 'Button label (e.g. 🎮 Gamer)',
+    rp_btn_label_ph: 'e.g. 🎮 Gamer',
+    rp_role_prompt: '🎭 Which role for this button?',
+    rp_color_prompt: '🎨 Choose panel embed color',
+    rp_prev_title: '📋 Title', rp_prev_desc: '📝 Description',
+    rp_prev_btns: (n) => `🔘 Buttons (${n})`,
+    rp_prev_color: '🎨 Color',
+    // welcome/goodbye wizard
+    wg_ch_prompt_w: '📢 Which channel for welcome messages?',
+    wg_ch_prompt_g: '📢 Which channel for goodbye messages?',
+    wg_msg_modal_t_w: 'Welcome Message', wg_msg_modal_t_g: 'Goodbye Message',
+    wg_msg_label: 'Message text',
+    wg_msg_ph_w: 'Welcome {user} to {server}! 🎉',
+    wg_msg_ph_g: 'Goodbye {user}, we will miss you!',
+    wg_wiz_w: '👋 Welcome Setup', wg_wiz_g: '👋 Goodbye Setup',
+    wg_prev_msg: '💬 Message', wg_prev_placeholders: '📎 Placeholders',
+    wg_placeholders: '{user} = mention, {username} = name, {server} = server, {membercount} = count',
   },
   he: {
     add_q: '➕ הוסף שאלה', rm_q: '🗑️ הסר אחרון', q_done: '▶️ המשך',
@@ -75,6 +120,51 @@ const T = {
     prev_role: '🎭 תפקיד אחרי אישור', prev_questions: (n) => `📝 שאלות (${n})`,
     prev_roles: '🎭 תפקידי תמיכה', prev_cats: (n) => `📁 קטגוריות (${n})`,
     none: 'אין',
+
+    // form customization
+    fm_title_prompt: 'שם הטופס',
+    fm_title_ph: 'טופס הרשמה',
+    fm_desc_prompt: 'תיאור הטופס',
+    fm_desc_ph: 'לחצו למטה כדי להגיש בקשה.',
+    fm_btn_label_prompt: 'טקסט הכפתור',
+    fm_btn_label_ph: 'הגש בקשה',
+    fm_prev_title: '📋 שם', fm_prev_desc: '📝 תיאור', fm_prev_btn: '🔘 טקסט כפתור',
+    // ticket customization
+    tk_title_prompt: 'כותרת הפאנל',
+    tk_title_ph: '🎫 מערכת כרטיסים',
+    tk_desc_prompt: 'תיאור הפאנל',
+    tk_desc_ph: 'לחצו למטה כדי לפתוח כרטיס.',
+    tk_btn_label_prompt: 'טקסט הכפתור',
+    tk_btn_label_ph: '🎫 פתח כרטיס',
+    tk_color_prompt: '🎨 בחר צבע להודעת הפאנל',
+    tk_prev_title: '📋 כותרת', tk_prev_desc: '📝 תיאור',
+    tk_prev_btn: '🔘 טקסט כפתור', tk_prev_color: '🎨 צבע',
+    // role panel wizard
+    rp_title_prompt: '📝 מה יהיה כותרת הפאנל?',
+    rp_desc_prompt: '📝 טקסט תיאור (מתחת לכותרת)',
+    rp_ch_prompt: '📢 באיזה ערוץ לשים את פאנל התפקידים?',
+    rp_add_btn: '➕ הוסף כפתור', rp_rm_btn: '🗑️ הסר אחרון', rp_done: '▶️ המשך',
+    rp_btn_label: (n) => `כפתורים (${n}/5)`,
+    rp_no_btns: '*(אין — לחץ הוסף כפתור)*',
+    rp_wiz: '🎭 בניית פאנל תפקידים',
+    rp_btn_modal_t: 'הוספת כפתור תפקיד',
+    rp_btn_label_l: 'תווית הכפתור (לדוגמה: 🎮 גיימר)',
+    rp_btn_label_ph: 'לדוגמה: 🎮 גיימר',
+    rp_role_prompt: '🎭 איזה תפקיד לכפתור הזה?',
+    rp_color_prompt: '🎨 בחר צבע להודעה',
+    rp_prev_title: '📋 כותרת', rp_prev_desc: '📝 תיאור',
+    rp_prev_btns: (n) => `🔘 כפתורים (${n})`,
+    rp_prev_color: '🎨 צבע',
+    // welcome/goodbye wizard
+    wg_ch_prompt_w: '📢 באיזה ערוץ הודעות קבלת פנים?',
+    wg_ch_prompt_g: '📢 באיזה ערוץ הודעות פרידה?',
+    wg_msg_modal_t_w: 'הודעת קבלת פנים', wg_msg_modal_t_g: 'הודעת פרידה',
+    wg_msg_label: 'טקסט ההודעה',
+    wg_msg_ph_w: 'ברוכים הבאים {user} ל-{server}! 🎉',
+    wg_msg_ph_g: 'להתראות {user}, נתגעגע!',
+    wg_wiz_w: '👋 הגדרת קבלת פנים', wg_wiz_g: '👋 הגדרת פרידה',
+    wg_prev_msg: '💬 הודעה', wg_prev_placeholders: '📎 מילות מפתח',
+    wg_placeholders: '{user} = אזכור, {username} = שם, {server} = שרת, {membercount} = מספר חברים',
   },
 };
 
@@ -97,15 +187,26 @@ function delW(gid, uid)        { store.delete(`${gid}:${uid}`); }
 
 function nextStep(type, step, data) {
   if (type === 'form') {
-    const map = { questions:'channel', channel:'log_channel', log_channel:'approval',
+    const map = { questions:'fm_title', fm_title:'fm_desc', fm_desc:'fm_btn_label', fm_btn_label:'channel', channel:'log_channel', log_channel:'approval',
                   approval: data.approval ? 'approval_role' : 'confirm',
                   approval_role:'confirm' };
     return map[step] ?? 'confirm';
   }
   if (type === 'ticket') {
-    const map = { channel:'roles', roles:'categories_q',
+    const map = { channel:'roles', roles:'tk_title',
+                  tk_title:'tk_message', tk_message:'tk_btn_label', tk_btn_label:'tk_color',
+                  tk_color:'categories_q',
                   categories_q: data.categories_enabled ? 'cat_builder' : 'confirm',
                   cat_builder:'confirm' };
+    return map[step] ?? 'confirm';
+  }
+
+  if (type === 'role_panel') {
+    const map = { channel:'button_builder', button_builder:'color', color:'title', title:'description', description:'confirm' };
+    return map[step] ?? 'confirm';
+  }
+  if (type === 'welcome' || type === 'goodbye') {
+    const map = { channel:'message', message:'confirm' };
     return map[step] ?? 'confirm';
   }
   return 'confirm';
@@ -211,6 +312,9 @@ function formPreviewRow(gid, uid, guild, lang, w) {
   const d = w.data;
   const qs = d.questions || [];
   const fields = [
+    { name: t(lang,'fm_prev_title'), value: d.title || t(lang,'fm_title_ph'), inline: true },
+    { name: t(lang,'fm_prev_desc'), value: d.description || t(lang,'fm_desc_ph'), inline: true },
+    { name: t(lang,'fm_prev_btn'), value: d.button_label || t(lang,'fm_btn_label_ph'), inline: true },
     { name: t(lang,'prev_channel'), value: d.channel_name ? `#${d.channel_name}` : '?', inline: true },
     { name: t(lang,'prev_log'),     value: d.log_channel_name ? `#${d.log_channel_name}` : t(lang,'none'), inline: true },
     { name: t(lang,'prev_approval'),value: d.approval ? t(lang,'yes_btn') : t(lang,'no_btn'), inline: true },
@@ -237,16 +341,118 @@ function ticketPreviewRow(gid, uid, guild, lang, w) {
   const roles = d.role_names || [];
   const cats  = d.categories || [];
   const fields = [
+    { name: t(lang,'tk_prev_title'), value: d.title || t(lang,'tk_title_ph'), inline: true },
+    { name: t(lang,'tk_prev_desc'), value: d.message || t(lang,'tk_desc_ph'), inline: true },
     { name: t(lang,'prev_channel'), value: d.channel_name ? `#${d.channel_name}` : '?', inline: true },
-    { name: t(lang,'prev_roles'),   value: roles.length ? roles.map(r=>`@${r}`).join(', ') : t(lang,'none'), inline: true },
+    { name: t(lang,'tk_prev_btn'), value: d.button_label || t(lang,'tk_btn_label_ph'), inline: true },
+    { name: t(lang,'tk_prev_color'), value: d.color ? `#${d.color}` : '#5865F2', inline: true },
+    { name: t(lang,'prev_roles'), value: roles.length ? roles.map(r=>`@${r}`).join(', ') : t(lang,'none'), inline: true },
     { name: t(lang,'prev_cats',cats.length), value: cats.length
         ? cats.map((c,i) => `${i+1}. ${c.name}${c.questions?.length ? ` (${c.questions.length} q)` : ''}`).join('\n')
         : t(lang,'none') },
   ];
   return {
     embeds: [new EmbedBuilder()
-      .setTitle(t(lang,'preview')).setDescription('🎫 **Ticket Panel**')
-      .addFields(fields).setColor(0x5865F2)],
+      .setTitle(t(lang,'preview')).setDescription(`\ud83c\udf9f\ufe0f **${d.title || 'Ticket Panel'}**`)
+      .addFields(fields).setColor(parseInt(d.color || '5865F2', 16))],
+    components: [new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`wiz:confirm:${gid}:${uid}`).setLabel(t(lang,'confirm')).setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`wiz:edit:${gid}:${uid}`).setLabel(t(lang,'edit_btn')).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`wiz:cancel:${gid}:${uid}`).setLabel(t(lang,'cancel')).setStyle(ButtonStyle.Danger),
+    )],
+  };
+}
+
+
+// ── Role panel wizard builders ───────────────────────────────────────────
+
+function rpButtonBuilderRow(gid, uid, lang, buttons) {
+  const btnText = buttons.length
+    ? buttons.map((b,i) => `**${i+1}.** ${b.label} → @${b.roleName}`).join('\n')
+    : t(lang,'rp_no_btns');
+  return {
+    embeds: [new EmbedBuilder()
+      .setTitle(t(lang,'rp_wiz'))
+      .addFields({ name: t(lang,'rp_btn_label',buttons.length), value: btnText })
+      .setColor(0x7c5af7)],
+    components: [new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`wiz:rp_add:${gid}:${uid}`).setLabel(t(lang,'rp_add_btn')).setStyle(ButtonStyle.Primary).setDisabled(buttons.length>=5),
+      new ButtonBuilder().setCustomId(`wiz:rp_rm:${gid}:${uid}`).setLabel(t(lang,'rp_rm_btn')).setStyle(ButtonStyle.Secondary).setDisabled(!buttons.length),
+      new ButtonBuilder().setCustomId(`wiz:rp_done:${gid}:${uid}`).setLabel(t(lang,'rp_done')).setStyle(ButtonStyle.Success).setDisabled(!buttons.length),
+      new ButtonBuilder().setCustomId(`wiz:cancel:${gid}:${uid}`).setLabel(t(lang,'cancel')).setStyle(ButtonStyle.Danger),
+    )],
+  };
+}
+
+function colorPickerRow(gid, uid, lang) {
+  const sel = new StringSelectMenuBuilder()
+    .setCustomId(`wiz:color_pick:${gid}:${uid}`)
+    .setPlaceholder(t(lang,'rp_color_prompt'))
+    .addOptions([{"label":"🔵 Blue","value":"5865F2"},{"label":"🟣 Purple","value":"7c5af7"},{"label":"🔴 Red","value":"ED4245"},{"label":"🟢 Green","value":"57F287"},{"label":"🟡 Yellow","value":"FEE75C"},{"label":"🟠 Orange","value":"E67E22"},{"label":"⚪ White","value":"FFFFFF"},{"label":"⚫ Dark","value":"2C2F33"}].map(c =>
+      new StringSelectMenuOptionBuilder().setLabel(c.label).setValue(c.value)
+    ));
+  return {
+    embeds: [new EmbedBuilder().setDescription(t(lang,'rp_color_prompt')).setColor(0x5865F2)],
+    components: [
+      new ActionRowBuilder().addComponents(sel),
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`wiz:cancel:${gid}:${uid}`).setLabel(t(lang,'cancel')).setStyle(ButtonStyle.Danger),
+      ),
+    ],
+  };
+}
+
+function rpPreviewRow(gid, uid, guild, lang, w) {
+  const d = w.data;
+  const btns = d.buttons || [];
+  const fields = [
+    { name: t(lang,'rp_prev_title'), value: d.title || '?', inline: true },
+    { name: t(lang,'rp_prev_desc'), value: d.description || '-', inline: true },
+    { name: t(lang,'prev_channel'), value: d.channel_name ? `#${d.channel_name}` : '?', inline: true },
+    { name: t(lang,'rp_prev_color'), value: d.color ? `#${d.color}` : '#5865F2', inline: true },
+    { name: t(lang,'rp_prev_btns',btns.length), value: btns.map((b,i) => `${i+1}. ${b.label} \u2192 @${b.roleName}`).join('\n') || '-' },
+  ];
+  return {
+    embeds: [new EmbedBuilder()
+      .setTitle(t(lang,'preview')).setDescription(`**${d.title || 'Role Panel'}**`)
+      .addFields(fields).setColor(parseInt(d.color || '5865F2', 16))],
+    components: [new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`wiz:confirm:${gid}:${uid}`).setLabel(t(lang,'confirm')).setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`wiz:edit:${gid}:${uid}`).setLabel(t(lang,'edit_btn')).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`wiz:cancel:${gid}:${uid}`).setLabel(t(lang,'cancel')).setStyle(ButtonStyle.Danger),
+    )],
+  };
+}
+
+// ── Welcome/Goodbye wizard builders ──────────────────────────────────────
+
+function wgMessageRow(gid, uid, lang, wType) {
+  const isW = wType === 'welcome';
+  return {
+    embeds: [new EmbedBuilder()
+      .setTitle(t(lang, isW ? 'wg_wiz_w' : 'wg_wiz_g'))
+      .setDescription(t(lang,'wg_prev_placeholders') + '\n' + t(lang,'wg_placeholders'))
+      .setColor(isW ? 0x57F287 : 0xED4245)],
+    components: [new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`wiz:wg_msg:${gid}:${uid}`).setLabel('\u270f\ufe0f ' + t(lang,'wg_msg_label')).setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`wiz:wg_skip_msg:${gid}:${uid}`).setLabel(t(lang,'skip')).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`wiz:cancel:${gid}:${uid}`).setLabel(t(lang,'cancel')).setStyle(ButtonStyle.Danger),
+    )],
+  };
+}
+
+function wgPreviewRow(gid, uid, guild, lang, w) {
+  const d = w.data;
+  const isW = w.type === 'welcome';
+  const fields = [
+    { name: t(lang,'prev_channel'), value: d.channel_name ? `#${d.channel_name}` : '?', inline: true },
+    { name: t(lang,'wg_prev_msg'), value: d.message || '(default)' },
+    { name: t(lang,'wg_prev_placeholders'), value: t(lang,'wg_placeholders') },
+  ];
+  return {
+    embeds: [new EmbedBuilder()
+      .setTitle(t(lang,'preview') + ' \u2014 ' + t(lang, isW ? 'wg_wiz_w' : 'wg_wiz_g'))
+      .addFields(fields).setColor(isW ? 0x57F287 : 0xED4245)],
     components: [new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`wiz:confirm:${gid}:${uid}`).setLabel(t(lang,'confirm')).setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId(`wiz:edit:${gid}:${uid}`).setLabel(t(lang,'edit_btn')).setStyle(ButtonStyle.Secondary),
@@ -262,6 +468,10 @@ function buildStepMessage(guild, gid, uid, w) {
   const key = `${type}:${step}`;
   switch (key) {
     case 'form:questions':     return formBuilderRow(gid, uid, lang, data.title, data.questions || []);
+
+    case 'form:fm_title':     { const m = new ModalBuilder().setCustomId(`wizmod:fm_title:${gid}:${uid}`).setTitle(t(lang,'fm_title_prompt')); m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('val').setLabel(t(lang,'fm_title_prompt')).setStyle(TextInputStyle.Short).setPlaceholder(t(lang,'fm_title_ph')).setRequired(true).setMaxLength(100))); return { __modal: m }; }
+    case 'form:fm_desc':      { const m = new ModalBuilder().setCustomId(`wizmod:fm_desc:${gid}:${uid}`).setTitle(t(lang,'fm_desc_prompt')); m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('val').setLabel(t(lang,'fm_desc_prompt')).setStyle(TextInputStyle.Paragraph).setPlaceholder(t(lang,'fm_desc_ph')).setRequired(false).setMaxLength(500))); return { __modal: m }; }
+    case 'form:fm_btn_label': { const m = new ModalBuilder().setCustomId(`wizmod:fm_btn_label:${gid}:${uid}`).setTitle(t(lang,'fm_btn_label_prompt')); m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('val').setLabel(t(lang,'fm_btn_label_prompt')).setStyle(TextInputStyle.Short).setPlaceholder(t(lang,'fm_btn_label_ph')).setRequired(true).setMaxLength(80))); return { __modal: m }; }
     case 'form:channel':       return chRow(guild, gid, uid, lang, t(lang,'form_ch_prompt'));
     case 'form:log_channel':   return chRow(guild, gid, uid, lang, t(lang,'log_ch_prompt'), true);
     case 'form:approval':      return yesNoRow(gid, uid, lang, t(lang,'approval_q'));
@@ -273,7 +483,27 @@ function buildStepMessage(guild, gid, uid, w) {
     case 'ticket:cat_builder': return w.sub_step === 'cat_questions'
                                  ? catQBuilderRow(gid, uid, lang, data.categories[data.current_cat_idx]?.name, data.categories[data.current_cat_idx]?.questions||[])
                                  : catBuilderRow(gid, uid, lang, data.categories||[]);
+
+    case 'ticket:tk_title':     { const m = new ModalBuilder().setCustomId(`wizmod:tk_title:${gid}:${uid}`).setTitle(t(lang,'tk_title_prompt')); m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('val').setLabel(t(lang,'tk_title_prompt')).setStyle(TextInputStyle.Short).setPlaceholder(t(lang,'tk_title_ph')).setRequired(true).setMaxLength(100))); return { __modal: m }; }
+    case 'ticket:tk_message':   { const m = new ModalBuilder().setCustomId(`wizmod:tk_message:${gid}:${uid}`).setTitle(t(lang,'tk_desc_prompt')); m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('val').setLabel(t(lang,'tk_desc_prompt')).setStyle(TextInputStyle.Paragraph).setPlaceholder(t(lang,'tk_desc_ph')).setRequired(false).setMaxLength(500))); return { __modal: m }; }
+    case 'ticket:tk_btn_label': { const m = new ModalBuilder().setCustomId(`wizmod:tk_btn_label:${gid}:${uid}`).setTitle(t(lang,'tk_btn_label_prompt')); m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('val').setLabel(t(lang,'tk_btn_label_prompt')).setStyle(TextInputStyle.Short).setPlaceholder(t(lang,'tk_btn_label_ph')).setRequired(true).setMaxLength(80))); return { __modal: m }; }
+    case 'ticket:tk_color':     return colorPickerRow(gid, uid, lang);
     case 'ticket:confirm':     return ticketPreviewRow(gid, uid, guild, lang, w);
+
+    // role panel
+    case 'role_panel:title':          { const m = new ModalBuilder().setCustomId(`wizmod:rp_title:${gid}:${uid}`).setTitle(t(lang,'rp_title_prompt').slice(0,45)); m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('val').setLabel(t(lang,'rp_title_prompt').slice(0,45)).setStyle(TextInputStyle.Short).setPlaceholder('\ud83c\udfad Choose Your Roles').setRequired(true).setMaxLength(100))); return { __modal: m }; }
+    case 'role_panel:description':    { const m = new ModalBuilder().setCustomId(`wizmod:rp_desc:${gid}:${uid}`).setTitle(t(lang,'rp_desc_prompt').slice(0,45)); m.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('val').setLabel(t(lang,'rp_desc_prompt').slice(0,45)).setStyle(TextInputStyle.Paragraph).setPlaceholder('Click a button to get a role!').setRequired(false).setMaxLength(500))); return { __modal: m }; }
+    case 'role_panel:channel':        return chRow(guild, gid, uid, lang, t(lang,'rp_ch_prompt'));
+    case 'role_panel:button_builder': return rpButtonBuilderRow(gid, uid, lang, data.buttons || []);
+    case 'role_panel:color':          return colorPickerRow(gid, uid, lang);
+    case 'role_panel:confirm':        return rpPreviewRow(gid, uid, guild, lang, w);
+    // welcome/goodbye
+    case 'welcome:channel':           return chRow(guild, gid, uid, lang, t(lang,'wg_ch_prompt_w'));
+    case 'welcome:message':           return wgMessageRow(gid, uid, lang, 'welcome');
+    case 'welcome:confirm':           return wgPreviewRow(gid, uid, guild, lang, w);
+    case 'goodbye:channel':           return chRow(guild, gid, uid, lang, t(lang,'wg_ch_prompt_g'));
+    case 'goodbye:message':           return wgMessageRow(gid, uid, lang, 'goodbye');
+    case 'goodbye:confirm':           return wgPreviewRow(gid, uid, guild, lang, w);
     default:                   return null;
   }
 }
@@ -349,16 +579,68 @@ async function executeTicketWizard(guild, w, db) {
     panelRow = new ActionRowBuilder().addComponents(sel);
   } else {
     panelRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('ticket:open').setLabel('Open a Ticket').setEmoji('🎫').setStyle(ButtonStyle.Primary)
+      new ButtonBuilder().setCustomId('ticket:open').setLabel(d.button_label || 'Open a Ticket').setEmoji('\ud83c\udf9f\ufe0f').setStyle(ButtonStyle.Primary)
     );
   }
   const embed = new EmbedBuilder()
-    .setTitle(d.title || '🎫 Support Tickets')
+    .setTitle(d.title || '\ud83c\udf9f\ufe0f Support Tickets')
     .setDescription(d.message || 'Click below to open a ticket.')
-    .setColor(0x5865F2);
+    .setColor(parseInt(d.color || '5865F2', 16));
   const msg = await ch.send({ embeds: [embed], components: [panelRow] });
   db.updateGuildConfig(guild.id, { panel_message_id: msg.id });
   return { channelName: ch.name, catCount: allCats.length };
+}
+
+
+async function executeRolePanelWizard(guild, w, db) {
+  const d = w.data;
+  if (!d.channel_id) throw new Error('No channel selected');
+  if (!d.buttons?.length) throw new Error('No buttons defined');
+
+  const ch = guild.channels.cache.get(d.channel_id);
+  if (!ch) throw new Error('Channel not found');
+
+  const validBtns = d.buttons.map(b => {
+    const role = guild.roles.cache.get(b.roleId);
+    return role ? { ...b, role } : null;
+  }).filter(Boolean);
+  if (!validBtns.length) throw new Error('No valid roles');
+
+  const roleIds = validBtns.map(b => b.role.id);
+  const panelId = db.createButtonRole(guild.id, ch.id, d.title || 'Role Panel', d.description || '', roleIds);
+
+  const embed = new EmbedBuilder()
+    .setTitle(d.title || '\ud83c\udfad Role Panel')
+    .setDescription(d.description || 'Click a button to toggle your role.')
+    .setColor(parseInt(d.color || '5865F2', 16));
+
+  const btns = validBtns.slice(0, 5).map(b => {
+    const btn = new ButtonBuilder()
+      .setCustomId(`role:toggle::${b.role.id}`)
+      .setLabel(b.label.slice(0, 80))
+      .setStyle(ButtonStyle.Secondary);
+    return btn;
+  });
+
+  const msg = await ch.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(...btns)] });
+  db.updateButtonRoleMsgId(panelId, msg.id);
+  return { channelName: ch.name, btnCount: btns.length };
+}
+
+async function executeWelcomeGoodbyeWizard(guild, w, db) {
+  const d = w.data;
+  if (!d.channel_id) throw new Error('No channel selected');
+  const isW = w.type === 'welcome';
+  const defaults = isW
+    ? { msg: 'Welcome {user} to {server}! \ud83c\udf89', chKey: 'welcome_channel_id', msgKey: 'welcome_message', enKey: 'welcome_enabled' }
+    : { msg: 'Goodbye {user}, we will miss you!', chKey: 'goodbye_channel_id', msgKey: 'goodbye_message', enKey: 'goodbye_enabled' };
+  db.updateGuildConfig(guild.id, {
+    [defaults.chKey]: d.channel_id,
+    [defaults.msgKey]: d.message || defaults.msg,
+    [defaults.enKey]: 1,
+  });
+  const ch = guild.channels.cache.get(d.channel_id);
+  return { channelName: ch?.name || '?', type: w.type };
 }
 
 // ── Interaction handler ───────────────────────────────────────────────────────
@@ -381,6 +663,7 @@ async function handleWizardInteraction(interaction, db) {
     w.step = newStep;
     setW(gid, uid, w);
     const msg = buildStepMessage(guild, gid, uid, w);
+    if (msg?.__modal) return interaction.showModal(msg.__modal);
     if (msg) await interaction.update(msg);
   };
 
@@ -499,6 +782,73 @@ async function handleWizardInteraction(interaction, db) {
     return;
   }
 
+
+  // ── role panel: add button (opens modal for label) ────────────────────
+  if (action === 'rp_add') {
+    const modal = new ModalBuilder().setCustomId(`wizmod:rp_btn_label:${gid}:${uid}`).setTitle(t(lang,'rp_btn_modal_t'));
+    modal.addComponents(new ActionRowBuilder().addComponents(
+      new TextInputBuilder().setCustomId('val').setLabel(t(lang,'rp_btn_label_l').slice(0,45)).setStyle(TextInputStyle.Short)
+        .setPlaceholder(t(lang,'rp_btn_label_ph')).setRequired(true).setMaxLength(80)
+    ));
+    return interaction.showModal(modal);
+  }
+
+  if (action === 'rp_rm') {
+    w.data = w.data || {};
+    (w.data.buttons = w.data.buttons || []).pop();
+    setW(gid, uid, w);
+    return interaction.update(rpButtonBuilderRow(gid, uid, lang, w.data.buttons));
+  }
+
+  if (action === 'rp_done') {
+    await advance(nextStep(w.type, w.step, w.data));
+    return;
+  }
+
+  // ── role panel: role selected for pending button ──────────────────────
+  if (action === 'rp_role') {
+    const roleId = interaction.values[0];
+    const role = guild.roles.cache.get(roleId);
+    if (!role) return;
+    w.data = w.data || {};
+    w.data.buttons = w.data.buttons || [];
+    const pending = w.data._pendingBtnLabel;
+    if (pending) {
+      w.data.buttons.push({ label: pending, roleId: role.id, roleName: role.name });
+      delete w.data._pendingBtnLabel;
+    }
+    w.step = 'button_builder';
+    setW(gid, uid, w);
+    return interaction.update(rpButtonBuilderRow(gid, uid, lang, w.data.buttons));
+  }
+
+  // ── color picker ──────────────────────────────────────────────────────
+  if (action === 'color_pick') {
+    w.data = w.data || {};
+    w.data.color = interaction.values[0];
+    await advance(nextStep(w.type, w.step, w.data));
+    return;
+  }
+
+  // ── welcome/goodbye: message button -> show modal ─────────────────────
+  if (action === 'wg_msg') {
+    const isW = w.type === 'welcome';
+    const modal = new ModalBuilder().setCustomId(`wizmod:wg_msg:${gid}:${uid}`).setTitle(t(lang, isW ? 'wg_msg_modal_t_w' : 'wg_msg_modal_t_g'));
+    modal.addComponents(new ActionRowBuilder().addComponents(
+      new TextInputBuilder().setCustomId('val').setLabel(t(lang,'wg_msg_label')).setStyle(TextInputStyle.Paragraph)
+        .setPlaceholder(t(lang, isW ? 'wg_msg_ph_w' : 'wg_msg_ph_g')).setRequired(true).setMaxLength(500)
+    ));
+    return interaction.showModal(modal);
+  }
+
+  if (action === 'wg_skip_msg') {
+    w.data = w.data || {};
+    const isW = w.type === 'welcome';
+    w.data.message = isW ? t(lang,'wg_msg_ph_w') : t(lang,'wg_msg_ph_g');
+    await advance(nextStep(w.type, w.step, w.data));
+    return;
+  }
+
   // ── confirm ───────────────────────────────────────────────────────────────
   if (action === 'confirm') {
     await interaction.deferUpdate();
@@ -509,11 +859,22 @@ async function handleWizardInteraction(interaction, db) {
         msg = lang === 'he'
           ? `✅ הטופס **${w.data.title || 'Form'}** נוצר בהצלחה ב-#${result.channelName}!`
           : `✅ Form **${w.data.title || 'Form'}** created in #${result.channelName}!`;
-      } else {
+      } else if (w.type === 'ticket') {
         result = await executeTicketWizard(guild, w, db);
         msg = lang === 'he'
           ? `✅ לוח הכרטיסים נוצר ב-#${result.channelName}! (${result.catCount} קטגוריות)`
-          : `✅ Ticket panel created in #${result.channelName}! (${result.catCount} categories)`;
+          : `\u2705 Ticket panel created in #${result.channelName}! (${result.catCount} categories)`;
+      } else if (w.type === 'role_panel') {
+        result = await executeRolePanelWizard(guild, w, db);
+        msg = lang === 'he'
+          ? `\u2705 \u05e4\u05d0\u05e0\u05dc \u05ea\u05e4\u05e7\u05d9\u05d3\u05d9\u05dd \u05e0\u05d5\u05e6\u05e8 \u05d1-#${result.channelName} \u05e2\u05dd ${result.btnCount} \u05db\u05e4\u05ea\u05d5\u05e8\u05d9\u05dd!`
+          : `\u2705 Role panel created in #${result.channelName} with ${result.btnCount} buttons!`;
+      } else if (w.type === 'welcome' || w.type === 'goodbye') {
+        result = await executeWelcomeGoodbyeWizard(guild, w, db);
+        const typeLabel = w.type === 'welcome' ? (lang === 'he' ? '\u05e7\u05d1\u05dc\u05ea \u05e4\u05e0\u05d9\u05dd' : 'Welcome') : (lang === 'he' ? '\u05e4\u05e8\u05d9\u05d3\u05d4' : 'Goodbye');
+        msg = lang === 'he'
+          ? `\u2705 \u05d4\u05d5\u05d3\u05e2\u05ea ${typeLabel} \u05d4\u05d5\u05d2\u05d3\u05e8\u05d4 \u05d1-#${result.channelName}!`
+          : `\u2705 ${typeLabel} message set up in #${result.channelName}!`;
       }
       delW(gid, uid);
       await interaction.editReply({ content: '✅ Done!', embeds: [], components: [] });
@@ -529,7 +890,7 @@ async function handleWizardInteraction(interaction, db) {
   if (action === 'edit') {
     w.step     = w.type === 'form' ? 'questions' : 'channel';
     w.sub_step = null;
-    w.data     = { title: w.data?.title, message: w.data?.message, questions: [], categories: [], support_role_ids: [] };
+    w.data     = w.type === 'role_panel' ? { buttons: [] } : (w.type === 'welcome' || w.type === 'goodbye') ? {} : { title: w.data?.title, message: w.data?.message, questions: [], categories: [], support_role_ids: [] };
     await advance(w.step);
     return;
   }
@@ -564,6 +925,131 @@ async function handleWizardModal(interaction, db) {
         return interaction.update(catQBuilderRow(gid, uid, lang, w.data.categories[idx].name, w.data.categories[idx].questions));
       }
     }
+  }
+
+
+
+
+  // form title modal
+  if (action === 'fm_title') {
+    w.data = w.data || {};
+    w.data.title = val;
+    w.step = nextStep(w.type, w.step, w.data);
+    setW(gid, uid, w);
+    const msg = buildStepMessage(interaction.guild, gid, uid, w);
+    if (msg?.__modal) return interaction.showModal(msg.__modal);
+    if (msg) return interaction.update(msg);
+    return;
+  }
+
+  // form description modal
+  if (action === 'fm_desc') {
+    w.data = w.data || {};
+    w.data.description = val || '';
+    w.step = nextStep(w.type, w.step, w.data);
+    setW(gid, uid, w);
+    const msg = buildStepMessage(interaction.guild, gid, uid, w);
+    if (msg?.__modal) return interaction.showModal(msg.__modal);
+    if (msg) return interaction.update(msg);
+    return;
+  }
+
+  // form button label modal
+  if (action === 'fm_btn_label') {
+    w.data = w.data || {};
+    w.data.button_label = val;
+    w.step = nextStep(w.type, w.step, w.data);
+    setW(gid, uid, w);
+    const msg = buildStepMessage(interaction.guild, gid, uid, w);
+    if (msg) return interaction.update(msg);
+    return;
+  }
+
+  // ticket title modal
+  if (action === 'tk_title') {
+    w.data = w.data || {};
+    w.data.title = val;
+    w.step = nextStep(w.type, w.step, w.data);
+    setW(gid, uid, w);
+    const msg = buildStepMessage(interaction.guild, gid, uid, w);
+    if (msg?.__modal) return interaction.showModal(msg.__modal);
+    if (msg) return interaction.update(msg);
+    return;
+  }
+
+  // ticket message/description modal
+  if (action === 'tk_message') {
+    w.data = w.data || {};
+    w.data.message = val || '';
+    w.step = nextStep(w.type, w.step, w.data);
+    setW(gid, uid, w);
+    const msg = buildStepMessage(interaction.guild, gid, uid, w);
+    if (msg?.__modal) return interaction.showModal(msg.__modal);
+    if (msg) return interaction.update(msg);
+    return;
+  }
+
+  // ticket button label modal
+  if (action === 'tk_btn_label') {
+    w.data = w.data || {};
+    w.data.button_label = val;
+    w.step = nextStep(w.type, w.step, w.data);
+    setW(gid, uid, w);
+    const msg = buildStepMessage(interaction.guild, gid, uid, w);
+    if (msg) return interaction.update(msg);
+    return;
+  }
+
+  // role panel title modal
+  if (action === 'rp_title') {
+    w.data = w.data || {};
+    w.data.title = val;
+    w.step = nextStep(w.type, w.step, w.data);
+    setW(gid, uid, w);
+    const msg = buildStepMessage(interaction.guild, gid, uid, w);
+    if (msg?.__modal) return interaction.showModal(msg.__modal);
+    if (msg) return interaction.update(msg);
+    return;
+  }
+
+  // role panel description modal
+  if (action === 'rp_desc') {
+    w.data = w.data || {};
+    w.data.description = val || '';
+    w.step = nextStep(w.type, w.step, w.data);
+    setW(gid, uid, w);
+    const msg = buildStepMessage(interaction.guild, gid, uid, w);
+    if (msg) return interaction.update(msg);
+    return;
+  }
+
+  // role panel button label modal -> show role picker
+  if (action === 'rp_btn_label') {
+    w.data = w.data || {};
+    w.data._pendingBtnLabel = val;
+    setW(gid, uid, w);
+    return interaction.update({
+      embeds: [new EmbedBuilder().setDescription(t(lang,'rp_role_prompt') + `\n\n\ud83c\udff7\ufe0f ${val}`).setColor(0x5865F2)],
+      components: [
+        new ActionRowBuilder().addComponents(
+          new RoleSelectMenuBuilder().setCustomId(`wiz:rp_role:${gid}:${uid}`).setPlaceholder(t(lang,'rp_role_prompt')).setMinValues(1).setMaxValues(1)
+        ),
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`wiz:cancel:${gid}:${uid}`).setLabel(t(lang,'cancel')).setStyle(ButtonStyle.Danger),
+        ),
+      ],
+    });
+  }
+
+  // welcome/goodbye message modal
+  if (action === 'wg_msg') {
+    w.data = w.data || {};
+    w.data.message = val;
+    w.step = nextStep(w.type, w.step, w.data);
+    setW(gid, uid, w);
+    const msg = buildStepMessage(interaction.guild, gid, uid, w);
+    if (msg) return interaction.update(msg);
+    return;
   }
 
   if (action === 'cat_name') {

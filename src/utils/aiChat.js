@@ -217,6 +217,9 @@ ${ownerSection}
   {"type":"ask_roles","prompt":"Which roles should have access?","purpose":"support_roles"}
   {"type":"ask_confirm","description":"Will create in #support-tickets","fields":[{"name":"Channel","value":"#support-tickets","inline":true}]}
   {"type":"start_form_wizard","title":"Application Form"}
+  {"type":"start_welcome_wizard"}
+  {"type":"start_goodbye_wizard"}
+  {"type":"start_role_panel_wizard"}
   {"type":"start_ticket_wizard","title":"🎫 Support Tickets","message":"Click to open"}
 
 ━━━━ RULES ━━━━
@@ -227,8 +230,11 @@ ${ownerSection}
 5. Use EXACT names from the server state for existing channels/roles/categories.
 6. Delete actions automatically require button confirmation — include them when appropriate.
 7. Return ONLY valid JSON — nothing outside the JSON object.
-8. Prefer start_ticket_wizard over setup_ticket — it guides the admin step by step with Discord UI.
-9. Prefer start_form_wizard over setup_form — same reason.
+8. ALWAYS use start_ticket_wizard for tickets — NEVER use setup_ticket directly.
+9. ALWAYS use start_form_wizard for forms — NEVER use setup_form directly.
+10a. ALWAYS use start_welcome_wizard / start_goodbye_wizard — NEVER set up welcome/goodbye directly.
+10b. ALWAYS use start_role_panel_wizard for role panels — NEVER use setup_button_panel directly.
+10c. For ban/kick/timeout: ONLY if requester has staff role or mod permissions. Non-staff → refuse politely, NO exceptions.
 10. NEVER say "I'm checking" or "I'll analyze" and then put actions. Check = reply only, act = next message.
 11. When organizing: MOVE first, DELETE only duplicates, CREATE categories for orphans.
 12. If the user says "don't do anything"/"אל תעשה כלום"/"stop" → empty actions, just acknowledge.
@@ -417,7 +423,7 @@ async function executeActions(guild, actions, db, isOwner, channel, userId) {
 
   for (const act of actions) {
     // Wizard UI actions — send interactive component then stop processing
-    if (['ask_channel','ask_roles','ask_confirm','start_form_wizard','start_ticket_wizard'].includes(act.type)) {
+    if (['ask_channel','ask_roles','ask_confirm','start_form_wizard','start_ticket_wizard','start_welcome_wizard','start_goodbye_wizard','start_role_panel_wizard'].includes(act.type)) {
       const sent = await handleWizardAction(act, guild, channel, userId, done, fails);
       if (sent) break;
       continue;

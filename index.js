@@ -236,6 +236,27 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 
     // ── Wizard interactions (AI chat interactive components) ────────────────────
+    // AI ban confirmation buttons
+    if (interaction.isButton() && interaction.customId?.startsWith('ai_ban:')) {
+      const [, targetId, requesterId] = interaction.customId.split(':');
+      if (interaction.user.id !== requesterId) return interaction.reply({ content: '\u274c', ephemeral: true });
+      try {
+        const member = await interaction.guild.members.fetch(targetId).catch(() => null);
+        if (!member) return interaction.update({ content: '\u274c User not found.', embeds: [], components: [] });
+        const reason = interaction.message.embeds[0]?.fields?.find(f => f.name.includes('Reason'))?.value || 'AI ban';
+        await member.send(`You have been **banned** from **${interaction.guild.name}**. Reason: ${reason}`).catch(() => {});
+        await member.ban({ reason: `${interaction.user.tag}: ${reason}` });
+        await interaction.update({ content: `\ud83d\udd28 **${member.user.tag}** has been banned.`, embeds: [], components: [] });
+      } catch (e) { await interaction.update({ content: `\u274c Ban failed: ${e.message}`, embeds: [], components: [] }); }
+      return;
+    }
+    if (interaction.isButton() && interaction.customId?.startsWith('ai_ban_cancel:')) {
+      const requesterId = interaction.customId.split(':')[1];
+      if (interaction.user.id !== requesterId) return interaction.reply({ content: '\u274c', ephemeral: true });
+      await interaction.update({ content: '\u274c Ban cancelled.', embeds: [], components: [] });
+      return;
+    }
+
     if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isRoleSelectMenu()) && interaction.customId?.startsWith('wiz:')) {
       const { handleWizardInteraction } = require('./src/utils/wizard');
       await handleWizardInteraction(interaction, db);
