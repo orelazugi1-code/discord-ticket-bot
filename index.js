@@ -268,6 +268,19 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
+    // ── Event buttons ──────────────────────────────────────────────────────
+    if (interaction.isButton() && interaction.customId.startsWith('evt_')) {
+      const { handleEventButton, handlePrizeDM } = require('./src/utils/eventGames');
+      const handled = await handleEventButton(interaction, interaction.client);
+      if (handled) return;
+      // Prize claim (DM interactions)
+      if ((interaction.isStringSelectMenu() || interaction.isButton()) && interaction.customId.startsWith('evt_prize_')) {
+        const { handlePrizeDM } = require('./src/utils/eventGames');
+        const handled2 = await handlePrizeDM(interaction, interaction.client, db);
+        if (handled2) return;
+      }
+    }
+
     // ── AI confirmation buttons (approve/cancel destructive actions) ─────
     if (interaction.isButton() && interaction.customId.startsWith('ai_confirm:')) {
       const [, guildId, ownerId] = interaction.customId.split(':');

@@ -177,7 +177,7 @@ ${roles}
 ━━━━ SMART ACTIONS (code handles the logic — just pick the right one) ━━━━
   {"type":"cleanup_empty_categories"} — finds and deletes ALL truly empty categories (code verifies!)
   {"type":"cleanup_duplicate_channels"} — finds duplicate channel names, keeps one, deletes the rest
-  {"type":"organize_server"} — full cleanup: moves orphan channels, deletes empty categories, removes duplicates
+  {"type":"organize_server"} — moves orphan channels, deletes empty categories, removes duplicates. NEVER creates new categories/channels!
   {"type":"server_report"} — shows a full report of the server structure (categories, channels, issues)
 
 ━━━━ MANUAL ACTIONS (you control exactly what happens) ━━━━
@@ -239,7 +239,9 @@ ${ownerSection}
 11. When organizing: MOVE first, DELETE only duplicates, CREATE categories for orphans.
 12. If the user says "don't do anything"/"אל תעשה כלום"/"stop" → empty actions, just acknowledge.
 13. NEVER repeat the same failed action. Try a different approach or explain what went wrong.
-14. If you already did something and the user complains it didn't work → EXPLAIN what happened and suggest a fix, don't just redo the same thing.`;
+14. If you already did something and the user complains it didn't work → EXPLAIN what happened and suggest a fix, don't just redo the same thing.
+15. NEVER create categories, channels, or roles unless the user EXPLICITLY asked for it by name. "organize"/"סדר" = MOVE existing channels, NOT create new ones. "improve"/"שפר" = suggest changes in reply, do NOT create anything.
+16. NEVER auto-add categories when organizing. NEVER "improve" by creating random structure. If you think something is missing, ASK the user first in "reply" — do NOT create it.`;
 }
 
 // ── Groq ──────────────────────────────────────────────────────────────────────
